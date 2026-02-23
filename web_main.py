@@ -7,7 +7,11 @@ import requests as http_requests
 
 load_dotenv()
 
-app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
+# Use absolute paths so Render finds templates reliably
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, 
+            template_folder=os.path.join(BASE_DIR, 'web', 'templates'),
+            static_folder=os.path.join(BASE_DIR, 'web', 'static'))
 CORS(app)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -135,9 +139,14 @@ def call_gemini(prompt):
 
 # ─── ROUTES ───────────────────────────────────────────────
 
-@app.route("/")
+@app.route("/", methods=["GET", "HEAD"])
+@app.route("/index.html")
 def index():
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        app.logger.error(f"Template error: {e}")
+        return f"<h2>App is running!</h2><p>Template error: {e}</p><p>BASE_DIR: {BASE_DIR}</p>", 500
 
 @app.route("/api/tailor-resume", methods=["POST"])
 def tailor_resume():
