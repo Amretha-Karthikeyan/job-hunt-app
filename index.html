@@ -937,7 +937,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <!-- Bookmarklet Section -->
     <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:10px;padding:14px;margin-bottom:16px;color:white;">
       <div style="font-weight:600;margin-bottom:4px;">🔖 Faster: Use the 1-Click Bookmarklet</div>
-      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;">Drag this to your bookmarks bar. Click it on any LinkedIn or Indeed job page to send the job straight to your tracker!</div>
+      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;">Drag to your bookmarks bar. Works in <strong>2 modes</strong>:<br>① On a <strong>single job page</strong> → adds that one job<br>② On <strong>linkedin.com/my-items/saved-jobs/</strong> → imports ALL your saved jobs at once! 🚀</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <a id="bookmarkletLink" href="#" 
            style="background:white;color:#764ba2;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;"
@@ -2189,25 +2189,70 @@ document.getElementById("dailyGoalTarget").addEventListener("change", function()
 (function setupBookmarklet() {
   const appUrl = window.location.origin;
   
-  // The bookmarklet code that runs on LinkedIn/Indeed pages
+  // The bookmarklet code — handles single jobs AND bulk saved jobs page
   const bookmarkletCode = `
 javascript:(function(){
   var appUrl='${appUrl}';
-  var title='',company='',jd='',location='Singapore',url=window.location.href;
-  
-  // LinkedIn selectors
+  var url=window.location.href;
+
+  // ── BULK MODE: LinkedIn Saved Jobs page ──────────────────
+  if(url.includes('linkedin.com/my-items') || url.includes('linkedin.com/jobs/saved')){
+    var cards=document.querySelectorAll('.job-card-container,.jobs-save-button__component,.scaffold-layout__list-item,.job-card-list');
+    var jobsToSend=[];
+    
+    // Try multiple card selectors LinkedIn uses
+    var allCards=document.querySelectorAll('[data-job-id],[data-entity-urn*="jobPosting"],.job-card-container--clickable,li.ember-view.jobs-search-results__list-item');
+    if(allCards.length===0) allCards=document.querySelectorAll('.job-card-container');
+    
+    allCards.forEach(function(card){
+      var t=card.querySelector('.job-card-list__title,.job-card-container__link strong,.artdeco-entity-lockup__title,.job-card-list__title--link');
+      var c=card.querySelector('.job-card-container__company-name,.artdeco-entity-lockup__subtitle,.job-card-list__company-name');
+      var l=card.querySelector('.job-card-container__metadata-item,.job-card-list__insight');
+      var a=card.querySelector('a[href*="/jobs/view/"]');
+      if(t && c){
+        jobsToSend.push({
+          role:t.innerText.trim(),
+          company:c.innerText.trim(),
+          location:(l?l.innerText.trim():'Singapore'),
+          url:(a?'https://www.linkedin.com'+a.getAttribute('href').split('?')[0]:''),
+          jd:'',
+          status:'wishlist'
+        });
+      }
+    });
+
+    if(jobsToSend.length===0){
+      alert('No saved jobs found on this page.\n\nMake sure you are on:\nlinkedin.com/my-items/saved-jobs/\n\nAnd that your saved jobs have loaded.');
+      return;
+    }
+
+    if(!confirm('Found '+jobsToSend.length+' saved jobs!\nSend all to your Job Tracker?')) return;
+
+    fetch(appUrl+'/api/bookmarklet-bulk',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({jobs:jobsToSend})
+    }).then(r=>r.json()).then(d=>{
+      if(d.success) alert('✅ '+d.count+' jobs added to your Job Tracker!\nSwitch to your app to see them.');
+      else alert('❌ Error: '+d.error);
+    }).catch(e=>alert('❌ Could not reach Job Tracker: '+e.message));
+    return;
+  }
+
+  // ── SINGLE JOB MODE: individual LinkedIn job page ────────
+  var title='',company='',jd='',location='Singapore';
+
   if(url.includes('linkedin.com')){
-    var t=document.querySelector('h1.t-24,h1.job-title,.job-details-jobs-unified-top-card__job-title h1,.top-card-layout__title');
-    var c=document.querySelector('.job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link,.top-card-layout__card a');
-    var d=document.querySelector('.jobs-description__content,.job-description__content,.jobs-box__html-content');
+    var t=document.querySelector('.job-details-jobs-unified-top-card__job-title h1,.top-card-layout__title,h1.t-24');
+    var c=document.querySelector('.job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link');
+    var d=document.querySelector('.jobs-description__content,.jobs-box__html-content,.job-description__content');
     var l=document.querySelector('.job-details-jobs-unified-top-card__bullet,.topcard__flavor--bullet');
     if(t) title=t.innerText.trim();
     if(c) company=c.innerText.trim();
     if(d) jd=d.innerText.trim().substring(0,3000);
     if(l) location=l.innerText.trim();
   }
-  
-  // Indeed selectors
+
   if(url.includes('indeed.com')){
     var t=document.querySelector('h1[data-testid="jobsearch-JobInfoHeader-title"],h1.jobsearch-JobInfoHeader-title');
     var c=document.querySelector('[data-testid="inlineHeader-companyName"] a,[data-testid="inlineHeader-companyName"]');
@@ -2218,17 +2263,20 @@ javascript:(function(){
     if(d) jd=d.innerText.trim().substring(0,3000);
     if(l) location=l.innerText.trim();
   }
-  
-  if(!title && !company){ alert('Could not detect job details on this page. Make sure you are on a job listing page.'); return; }
-  
+
+  if(!title && !company){
+    alert('No job found on this page.\n\nTry going to a specific job listing, or go to:\nlinkedin.com/my-items/saved-jobs/\nto import all saved jobs at once.');
+    return;
+  }
+
   fetch(appUrl+'/api/bookmarklet-add',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({role:title,company:company,jd:jd,location:location,url:url})
   }).then(r=>r.json()).then(d=>{
-    if(d.success) alert('✅ Added to your Job Tracker!\n\n'+title+' @ '+company);
+    if(d.success) alert('✅ Added to Job Tracker!\n\n'+title+' at '+company);
     else alert('❌ Error: '+d.error);
-  }).catch(e=>alert('❌ Could not reach your Job Tracker app. Make sure it is running.'));
+  }).catch(e=>alert('❌ Could not reach Job Tracker: '+e.message));
 })();`;
 
   // Set the bookmarklet href

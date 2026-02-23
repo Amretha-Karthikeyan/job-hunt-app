@@ -499,10 +499,22 @@ For each job, return a JSON array with this exact structure:
 ]
 
 Scoring guide:
-9-10: Near-perfect fit — role matches her PO/BA background, fintech domain, Singapore, in-house
+9-10: Near-perfect fit — in-house product role, fintech/tech domain, Singapore, matches PO/BA background
 7-8: Good fit — most criteria match, minor gaps
-5-6: Possible — transferable skills apply but gaps exist
+5-6: Possible — transferable skills apply but some gaps
 1-4: Weak fit — significant mismatch in role type, seniority, or domain
+
+COMPANY TYPE WEIGHTING — apply these modifiers BEFORE finalising the score:
++2 points: In-house product companies (Grab, Sea/Shopee, Gojek, Airwallex, Stripe, Revolut, Wise, PropertyGuru, Carousell, Lazada, ByteDance, Razer, DBS Tech, OCBC digital, GovTech, tech startups)
++1 point: Companies with strong internal product teams (large banks with digital arms, insurance tech)
+ 0 points: Neutral / unclear
+-2 points: Consulting or professional services firms (Big 4: KPMG, Deloitte, PwC, EY, Accenture, McKinsey, BCG, Bain, IBM GBS, Wipro, Infosys, TCS, CGI, Cognizant)
+
+Amretha is ACTIVELY LEAVING consulting — a consulting role should score maximum 4/10 regardless of title.
+Flag consulting roles clearly in the reason field so she can deprioritise them immediately.
+
+VISA RULE — HARD OVERRIDE:
+If the job description contains any of these phrases: "no visa sponsorship", "no sponsorship", "candidates must have right to work", "must be a Singapore citizen or PR", "singaporeans and PRs only", "no work pass sponsorship" — score it 0/10, label it ❌ Weak Fit, priority Skip, and reason must say "This role explicitly states no visa sponsorship — not worth applying." regardless of any other fit factors.
 
 Return ONLY the JSON array, no other text."""
 
@@ -594,6 +606,79 @@ def bookmarklet_jobs():
         return jsonify({"jobs": saved})
     except Exception as e:
         return jsonify({"jobs": [], "error": str(e)})
+
+
+@app.route("/api/bookmarklet-bulk", methods=["POST", "OPTIONS"])
+def bookmarklet_bulk():
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    data = request.json
+    incoming_jobs = data.get("jobs", [])
+
+    if not incoming_jobs:
+        resp = jsonify({"success": False, "error": "No jobs provided"})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 400
+
+    import json, os, time
+    from datetime import date
+
+    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+
+    try:
+        if os.path.exists(jobs_file):
+            with open(jobs_file, "r") as f:
+                saved = json.load(f)
+        else:
+            saved = []
+
+        # Avoid duplicates by URL or title+company combo
+        existing_keys = set()
+        for j in saved:
+            if j.get("url"):
+                existing_keys.add(j["url"].split("?")[0])
+            else:
+                existing_keys.add(f"{j.get('role','')}|{j.get('company','')}")
+
+        added = 0
+        for job in incoming_jobs:
+            key = job.get("url", "").split("?")[0] if job.get("url") else f"{job.get('role','')}|{job.get('company','')}"
+            if key in existing_keys:
+                continue
+            new_job = {
+                "id": int(time.time() * 1000) + added,
+                "role": job.get("role", "").strip(),
+                "company": job.get("company", "").strip(),
+                "jd": job.get("jd", ""),
+                "location": job.get("location", "Singapore"),
+                "url": job.get("url", ""),
+                "status": "wishlist",
+                "date": date.today().strftime("%d/%m/%Y"),
+                "notes": "",
+                "salary": "",
+                "isDemo": False,
+                "fromBookmarklet": True
+            }
+            saved.append(new_job)
+            existing_keys.add(key)
+            added += 1
+
+        with open(jobs_file, "w") as f:
+            json.dump(saved, f)
+
+        resp = jsonify({"success": True, "count": added, "total": len(incoming_jobs)})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    except Exception as e:
+        resp = jsonify({"success": False, "error": str(e)})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
