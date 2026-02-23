@@ -2,18 +2,15 @@ import os
 import json
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-import google.generativeai as genai
 from dotenv import load_dotenv
+import requests as http_requests
 
 load_dotenv()
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 CORS(app)
 
-# Configure Gemini
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 PROFILE = {
     "name": "Amretha Karthikeyan",
@@ -121,13 +118,20 @@ def is_ai_role(jd, role_type):
 
 def call_gemini(prompt):
     if not GEMINI_API_KEY:
-        return "Error: Gemini API key not configured. Please set GEMINI_API_KEY in Render environment variables."
+        return "Error: GEMINI_API_KEY not set. Add it in Render → Environment Variables."
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
-        return response.text
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.7}
+        }
+        res = http_requests.post(url, json=body, timeout=30)
+        data = res.json()
+        if "error" in data:
+            return f"Gemini API error: {data['error']['message']}"
+        return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
-        return f"Error calling Gemini API: {str(e)}"
+        return f"Error: {str(e)}"
 
 # ─── ROUTES ───────────────────────────────────────────────
 
