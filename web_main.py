@@ -7,11 +7,11 @@ import requests as http_requests
 
 load_dotenv()
 
-# Use absolute paths so Render finds templates reliably
+# Templates at root level - most reliable on Render
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, 
-            template_folder=os.path.join(BASE_DIR, 'web', 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'web', 'static'))
+            template_folder=BASE_DIR,
+            static_folder=os.path.join(BASE_DIR, 'static'))
 CORS(app)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
