@@ -672,6 +672,8 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div class="card-title" style="margin-bottom:0;">📋 Application Kanban</div>
     <div class="flex-row">
       <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add New Job</button>
+      <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;" onclick="openImportModal()">🔗 Import from URL</button>
+      <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;" onclick="openRankModal()">🏆 AI Rank My Jobs</button>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;" onclick="clearDemoData()">🗑 Remove Demo Cards</button>
     </div>
@@ -890,6 +892,101 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
 <!-- ========== MODALS ========== -->
 
+<!-- AI Job Ranking Modal -->
+<div class="modal-overlay" id="rankModal" style="display:none;">
+  <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('rankModal')">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">🏆 AI Job Fit Ranking</div>
+      <div class="modal-subtitle">Claude analyses every job in your tracker against your profile and ranks them</div>
+    </div>
+
+    <div id="rankLoading" style="text-align:center;padding:40px;display:none;">
+      <span class="spinner spinner-blue" style="width:32px;height:32px;border-width:3px;"></span>
+      <div style="margin-top:16px;color:var(--gray-400);">Analysing your jobs against your profile...</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gray-400);">This may take 15–30 seconds for large lists</div>
+    </div>
+
+    <div id="rankResults" style="display:none;">
+      <div id="rankSummary" style="margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:13px;color:var(--gray-500);"></div>
+      <div id="rankList"></div>
+      <div style="margin-top:16px;text-align:center;">
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('rankModal')">Close</button>
+        <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;margin-left:8px;" onclick="openRankModal()">🔄 Re-run Analysis</button>
+      </div>
+    </div>
+
+    <div id="rankEmpty" style="display:none;text-align:center;padding:40px;color:var(--gray-400);">
+      <div style="font-size:32px;margin-bottom:12px;">📋</div>
+      <div>No jobs in your tracker yet. Add some jobs first, then rank them!</div>
+    </div>
+
+    <div id="rankError" style="display:none;padding:16px;background:#fff1f2;border-radius:8px;color:#dc2626;font-size:14px;"></div>
+  </div>
+</div>
+
+<!-- Import Job Modal -->
+<div class="modal-overlay" id="importJobModal" style="display:none;">
+  <div class="modal" style="max-width:560px;">
+    <button class="modal-close" onclick="closeModal('importJobModal')">✕</button>
+    <div class="modal-header">
+      <div class="modal-title">🔗 Import Job from URL</div>
+      <div class="modal-subtitle">Paste a LinkedIn or Indeed job URL to auto-fill details</div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label class="form-label">Job URL</label>
+      <div style="display:flex;gap:8px;">
+        <input id="importUrl" type="url" class="form-input" placeholder="https://www.linkedin.com/jobs/view/... or https://sg.indeed.com/..." style="flex:1;" />
+        <button class="btn btn-primary" onclick="importJobFromUrl()" id="importBtn" style="white-space:nowrap;">🔍 Fetch</button>
+      </div>
+      <div id="importStatus" style="margin-top:8px;font-size:13px;color:var(--gray-400);"></div>
+    </div>
+
+    <div id="importFormFields" style="display:none;">
+      <div class="form-row">
+        <div>
+          <label class="form-label">Job Title *</label>
+          <input id="importTitle" class="form-input" placeholder="e.g. Product Owner" />
+        </div>
+        <div>
+          <label class="form-label">Company *</label>
+          <input id="importCompany" class="form-input" placeholder="e.g. Grab" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">Role Type</label>
+          <select id="importRoleType" class="form-input">
+            <option>Product Owner</option>
+            <option>Product Manager</option>
+            <option>Business Analyst</option>
+            <option>AI Product Manager</option>
+            <option>AI Business Analyst</option>
+            <option>Senior Business Analyst</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Location</label>
+          <input id="importLocation" class="form-input" value="Singapore" />
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Job Description (paste if not auto-filled)</label>
+        <textarea id="importDescription" class="form-input" rows="5" placeholder="Paste job description here..."></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button class="btn btn-primary" onclick="saveImportedJob()" style="flex:1;">✅ Add to Tracker</button>
+        <button class="btn btn-ghost" onclick="closeModal('importJobModal')">Cancel</button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:12px;color:var(--gray-400);">
+      <strong>💡 Tips:</strong> LinkedIn often requires manual JD paste (login wall). Indeed usually auto-fills. After importing, head to Resume Tailorer to generate your tailored resume.
+    </div>
+  </div>
+</div>
+
 <!-- Add Job Modal -->
 <div class="modal-overlay" id="addJobModal" style="display:none;">
   <div class="modal">
@@ -1077,6 +1174,210 @@ function toast(msg, type = "") {
 }
 
 // ========== TAB SWITCHING ==========
+
+
+// ─── AI JOB RANKING ─────────────────────────────────────────
+
+async function openRankModal() {
+  // Reset state
+  document.getElementById('rankLoading').style.display = 'none';
+  document.getElementById('rankResults').style.display = 'none';
+  document.getElementById('rankEmpty').style.display = 'none';
+  document.getElementById('rankError').style.display = 'none';
+  openModal('rankModal');
+
+  const realJobs = jobs.filter(j => !j.isDemo);
+  if (realJobs.length === 0) {
+    document.getElementById('rankEmpty').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('rankLoading').style.display = 'block';
+
+  try {
+    // Send jobs to backend for ranking
+    const payload = realJobs.map(j => ({
+      id: j.id,
+      role: j.role,
+      company: j.company,
+      roleType: j.roleType || '',
+      jd: j.jd || ''
+    }));
+
+    const data = await callBackend('/api/rank-jobs', { jobs: payload });
+
+    document.getElementById('rankLoading').style.display = 'none';
+
+    if (data.error) {
+      document.getElementById('rankError').style.display = 'block';
+      document.getElementById('rankError').textContent = 'Error: ' + data.error;
+      return;
+    }
+
+    // Sort rankings by score descending
+    const rankings = data.rankings.sort((a, b) => b.score - a.score);
+
+    // Build lookup map
+    const jobMap = {};
+    realJobs.forEach(j => { jobMap[j.id] = j; });
+
+    // Render summary
+    const topJobs = rankings.filter(r => r.score >= 7);
+    const skipJobs = rankings.filter(r => r.score <= 4);
+    document.getElementById('rankSummary').innerHTML = 
+      `Analysed <strong>${rankings.length} jobs</strong> — <strong style="color:#15803d">${topJobs.length} strong matches</strong>, ` +
+      `<strong style="color:#dc2626">${skipJobs.length} weak fits</strong>. Focus your energy on the top ones first.`;
+
+    // Render ranked list
+    const scoreColors = {
+      '🔥 Strong Match': '#fef3c7',
+      '✅ Good Fit': '#f0fdf4',
+      '🟡 Possible': '#fffbeb',
+      '❌ Weak Fit': '#fff1f2'
+    };
+    const scoreBorderColors = {
+      '🔥 Strong Match': '#fde68a',
+      '✅ Good Fit': '#bbf7d0',
+      '🟡 Possible': '#fed7aa',
+      '❌ Weak Fit': '#fecdd3'
+    };
+    const priorityColors = {
+      'Apply Today': '#dc2626',
+      'Apply This Week': '#d97706',
+      'Lower Priority': '#6b7280',
+      'Skip': '#9ca3af'
+    };
+
+    let html = '';
+    rankings.forEach((r, idx) => {
+      const job = jobMap[r.id] || {};
+      const bg = scoreColors[r.label] || '#f8fafc';
+      const border = scoreBorderColors[r.label] || '#e2e8f0';
+      const priColor = priorityColors[r.priority] || '#6b7280';
+
+      html += `<div style="margin-bottom:12px;padding:14px;background:${bg};border:1.5px solid ${border};border-radius:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:18px;font-weight:700;color:var(--gray-600);">#${idx+1}</span>
+            <div>
+              <div style="font-weight:600;font-size:15px;">${job.role || r.id}</div>
+              <div style="font-size:13px;color:var(--gray-500);">${job.company || ''}</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13px;font-weight:600;">${r.label}</div>
+            <div style="font-size:22px;font-weight:800;color:var(--blue);">${r.score}<span style="font-size:13px;font-weight:400;color:var(--gray-400);">/10</span></div>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--gray-600);margin-bottom:8px;">${r.reason}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;font-weight:600;color:${priColor};">⏰ ${r.priority}</span>
+          <button onclick="closeModal('rankModal');switchTab('tab1',document.querySelector('.tab-btn'));document.getElementById('t1JD').value=${JSON.stringify(job.jd||'')};document.getElementById('t1RoleType').value=${JSON.stringify(job.roleType||'Business Analyst')};" 
+            style="font-size:12px;padding:4px 10px;background:white;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;color:var(--blue);">
+            ✨ Tailor Resume →
+          </button>
+        </div>
+      </div>`;
+    });
+
+    document.getElementById('rankList').innerHTML = html;
+    document.getElementById('rankResults').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('rankLoading').style.display = 'none';
+    document.getElementById('rankError').style.display = 'block';
+    document.getElementById('rankError').textContent = 'Error: ' + e.message;
+  }
+}
+
+// ─── IMPORT JOB FROM URL ────────────────────────────────────
+
+function openImportModal() {
+  document.getElementById('importUrl').value = '';
+  document.getElementById('importStatus').textContent = '';
+  document.getElementById('importFormFields').style.display = 'none';
+  document.getElementById('importTitle').value = '';
+  document.getElementById('importCompany').value = '';
+  document.getElementById('importDescription').value = '';
+  document.getElementById('importLocation').value = 'Singapore';
+  openModal('importJobModal');
+}
+
+async function importJobFromUrl() {
+  const url = document.getElementById('importUrl').value.trim();
+  if (!url) { toast('Please paste a URL first', 'error'); return; }
+
+  const btn = document.getElementById('importBtn');
+  const status = document.getElementById('importStatus');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  status.textContent = 'Fetching job details...';
+  status.style.color = 'var(--gray-400)';
+
+  try {
+    const data = await callBackend('/api/import-job', { url });
+
+    // Populate fields with whatever we got
+    if (data.title) document.getElementById('importTitle').value = data.title;
+    if (data.company) document.getElementById('importCompany').value = data.company;
+    if (data.location) document.getElementById('importLocation').value = data.location;
+    if (data.description) document.getElementById('importDescription').value = data.description;
+
+    // Guess role type from title
+    const title = (data.title || '').toLowerCase();
+    const roleSelect = document.getElementById('importRoleType');
+    if (title.includes('product owner') || title.includes('po ')) roleSelect.value = 'Product Owner';
+    else if (title.includes('product manager') || title.includes(' pm')) roleSelect.value = 'Product Manager';
+    else if (title.includes('ai') || title.includes('ml')) roleSelect.value = 'AI Product Manager';
+
+    // Show the form
+    document.getElementById('importFormFields').style.display = 'block';
+
+    // Show status message
+    const icon = data.partial ? '⚠️' : '✅';
+    status.textContent = icon + ' ' + (data.message || 'Done');
+    status.style.color = data.partial ? '#c2410c' : '#15803d';
+
+  } catch(e) {
+    status.textContent = '❌ Error: ' + e.message;
+    status.style.color = '#dc2626';
+    // Still show the form so they can fill manually
+    document.getElementById('importFormFields').style.display = 'block';
+  }
+
+  btn.innerHTML = '🔍 Fetch';
+  btn.disabled = false;
+}
+
+function saveImportedJob() {
+  const title = document.getElementById('importTitle').value.trim();
+  const company = document.getElementById('importCompany').value.trim();
+  if (!title || !company) { toast('Title and Company are required', 'error'); return; }
+
+  const job = {
+    id: Date.now(),
+    role: title,
+    company: company,
+    roleType: document.getElementById('importRoleType').value,
+    location: document.getElementById('importLocation').value || 'Singapore',
+    url: document.getElementById('importUrl').value.trim(),
+    jd: document.getElementById('importDescription').value.trim(),
+    status: 'wishlist',
+    date: new Date().toLocaleDateString('en-GB'),
+    notes: '',
+    salary: '',
+    isDemo: false
+  };
+
+  jobs.push(job);
+  saveJobs(jobs);
+  renderKanban();
+  updateStats();
+  renderAnalytics();
+  closeModal('importJobModal');
+  toast(`✅ "${title}" at ${company} added to tracker!`, 'success');
+}
+
 function switchTab(tabId, btn) {
   document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));

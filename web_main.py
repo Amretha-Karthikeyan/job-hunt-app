@@ -314,6 +314,210 @@ def generic():
     result = call_gemini(full_prompt)
     return jsonify({"result": result})
 
+
+@app.route("/api/import-job", methods=["POST"])
+def import_job():
+    data = request.json
+    url = data.get("url", "").strip()
+    
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    # Detect platform
+    is_linkedin = "linkedin.com" in url
+    is_indeed = "indeed.com" in url or "sg.indeed.com" in url
+
+    # Headers that mimic a real browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0",
+    }
+
+    result = {
+        "platform": "linkedin" if is_linkedin else "indeed" if is_indeed else "other",
+        "url": url,
+        "title": "",
+        "company": "",
+        "location": "Singapore",
+        "description": "",
+        "partial": False,
+        "message": ""
+    }
+
+    try:
+        from bs4 import BeautifulSoup
+
+        if is_linkedin:
+            # LinkedIn blocks login-walled pages but public job URLs sometimes work
+            # Extract job ID from URL for reference
+            import re
+            job_id_match = re.search(r'/jobs/view/(\d+)', url)
+            job_id = job_id_match.group(1) if job_id_match else ""
+            
+            # Try to extract company from URL slug
+            company_match = re.search(r'linkedin\.com/jobs/view/[^/]+-at-([a-z0-9-]+)-\d+', url)
+            if company_match:
+                result["company"] = company_match.group(1).replace("-", " ").title()
+
+            try:
+                resp = http_requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(resp.text, "lxml")
+
+                # Try various LinkedIn selectors
+                title_el = (soup.find("h1", {"class": lambda c: c and "job-title" in c}) or
+                           soup.find("h1", {"class": lambda c: c and "topcard__title" in c}) or
+                           soup.find("h1"))
+                if title_el:
+                    result["title"] = title_el.get_text(strip=True)
+
+                company_el = (soup.find("a", {"class": lambda c: c and "topcard__org-name" in c}) or
+                             soup.find("span", {"class": lambda c: c and "company-name" in c}))
+                if company_el:
+                    result["company"] = company_el.get_text(strip=True)
+
+                desc_el = (soup.find("div", {"class": lambda c: c and "description__text" in c}) or
+                          soup.find("div", {"class": lambda c: c and "job-description" in c}))
+                if desc_el:
+                    result["description"] = desc_el.get_text(separator="\n", strip=True)[:3000]
+
+                if not result["title"] and not result["description"]:
+                    # LinkedIn returned a login wall
+                    result["partial"] = True
+                    result["message"] = "LinkedIn requires login to view full details. Company name extracted from URL — please paste the job description manually."
+                else:
+                    result["message"] = "Job details imported from LinkedIn!"
+
+            except Exception:
+                result["partial"] = True
+                result["message"] = "LinkedIn blocked the request. Company extracted from URL — please paste the job description manually."
+
+        elif is_indeed:
+            resp = http_requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "lxml")
+
+            # Indeed selectors
+            title_el = (soup.find("h1", {"class": lambda c: c and "jobTitle" in str(c)}) or
+                       soup.find("h1", {"data-testid": "jobsearch-JobInfoHeader-title"}) or
+                       soup.find("h1"))
+            if title_el:
+                result["title"] = title_el.get_text(strip=True).replace("- job post", "").strip()
+
+            company_el = (soup.find("div", {"data-testid": "inlineHeader-companyName"}) or
+                         soup.find("span", {"class": lambda c: c and "companyName" in str(c)}) or
+                         soup.find("a", {"data-tn-element": "companyName"}))
+            if company_el:
+                result["company"] = company_el.get_text(strip=True)
+
+            location_el = (soup.find("div", {"data-testid": "job-location"}) or
+                          soup.find("div", {"class": lambda c: c and "companyLocation" in str(c)}))
+            if location_el:
+                result["location"] = location_el.get_text(strip=True)
+
+            desc_el = (soup.find("div", {"id": "jobDescriptionText"}) or
+                      soup.find("div", {"class": lambda c: c and "jobsearch-jobDescriptionText" in str(c)}))
+            if desc_el:
+                result["description"] = desc_el.get_text(separator="\n", strip=True)[:3000]
+
+            if result["title"] or result["company"]:
+                result["message"] = "Job details imported from Indeed! ✅"
+            else:
+                result["partial"] = True
+                result["message"] = "Could not extract details automatically. Please fill in manually."
+
+        else:
+            # Generic scrape attempt
+            resp = http_requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "lxml")
+            title_el = soup.find("h1")
+            if title_el:
+                result["title"] = title_el.get_text(strip=True)
+            result["partial"] = True
+            result["message"] = "Basic details extracted — please verify and fill in any missing fields."
+
+    except Exception as e:
+        result["partial"] = True
+        result["message"] = f"Could not fetch URL automatically. Please fill in details manually. ({str(e)[:80]})"
+
+    return jsonify(result)
+
+
+@app.route("/api/rank-jobs", methods=["POST"])
+def rank_jobs():
+    data = request.json
+    jobs = data.get("jobs", [])
+    
+    if not jobs:
+        return jsonify({"error": "No jobs provided"}), 400
+
+    # Build a compact job list for the prompt
+    job_list = ""
+    for i, j in enumerate(jobs):
+        jd_snippet = (j.get("jd", "") or "")[:400]
+        job_list += f"""
+JOB {i+1}:
+  ID: {j.get("id")}
+  Title: {j.get("role", "Unknown")}
+  Company: {j.get("company", "Unknown")}
+  Type: {j.get("roleType", "")}
+  JD: {jd_snippet if jd_snippet else "No JD provided"}
+---"""
+
+    prompt = f"""You are a career coach expert in Singapore's tech and fintech product job market.
+
+CANDIDATE PROFILE:
+Name: Amretha Karthikeyan
+Current: Lead BA / de-facto Product Owner at KPMG Singapore (Feb 2021–Present)
+- Owned Loan IQ core banking product backlog, led cross-functional squads (eng, UX, QA)
+- Drove ~5% business value through product scope decisions
+- Eliminated 30 man-days via automation feature
+- Led sprint ceremonies, PI Planning, go-live planning, data migrations
+Certification: SAFe 6.0 Product Owner / Product Manager
+Skills: Agile, JIRA, SQL, Tableau, Power BI, Loan IQ, Stakeholder Management, Generative AI, Claude API
+Previous: Amazon India (BA, dashboards), J.P. Morgan virtual internship
+Personal project: Live AI Trade Analysis platform (Claude Opus 4.6) — proves she ships AI products
+Target: In-house product roles in Singapore (NOT consulting) — PM, PO, BA at fintech/tech companies
+Experience: 5+ years total
+Transition: Consulting → In-house product
+
+JOBS TO EVALUATE:
+{job_list}
+
+For each job, return a JSON array with this exact structure:
+[
+  {{
+    "id": <job id number>,
+    "score": <integer 1-10>,
+    "label": "<one of: 🔥 Strong Match | ✅ Good Fit | 🟡 Possible | ❌ Weak Fit>",
+    "reason": "<2 sentences: why she fits + one gap or concern if any>",
+    "priority": "<one of: Apply Today | Apply This Week | Lower Priority | Skip>"
+  }}
+]
+
+Scoring guide:
+9-10: Near-perfect fit — role matches her PO/BA background, fintech domain, Singapore, in-house
+7-8: Good fit — most criteria match, minor gaps
+5-6: Possible — transferable skills apply but gaps exist
+1-4: Weak fit — significant mismatch in role type, seniority, or domain
+
+Return ONLY the JSON array, no other text."""
+
+    result = call_gemini(prompt)
+    
+    # Parse the JSON response
+    import json, re
+    try:
+        # Clean up response - remove markdown code blocks if present
+        clean = re.sub(r'```json|```', '', result).strip()
+        rankings = json.loads(clean)
+        return jsonify({"rankings": rankings, "raw": result})
+    except Exception as e:
+        return jsonify({"error": f"Could not parse AI response: {str(e)}", "raw": result}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
