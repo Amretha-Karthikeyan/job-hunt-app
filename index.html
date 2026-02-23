@@ -1604,7 +1604,7 @@ async function openSpeedKit() {
   
   let motivationA = `I'm drawn to ${company} because of the scale and impact of what you're building. My background owning the Loan IQ product backlog at KPMG — shipping core banking features used by enterprise banks — maps closely to the complexity and domain here. More importantly, I want to transition from delivering for clients to building for users directly, and ${company} is exactly the in-house product environment where I can do that.`;
   try {
-    const motData = await callBackend('/api/speed-kit', { company, role }); motivationA = motData.result; const _unused = ` a genuine "Why do you want to work here?" answer for Amretha Karthikeyan, a SAFe 6.0 PO/Lead BA transitioning from KPMG consulting to an in-house ${role} role at ${company}. Sound like a product person who wants to build, not a consultant who delivers. Be specific to ${company}'s product or market if you know it. Do not mention consulting, clients, or engagement.`);
+    const motData = await callBackend('/api/speed-kit', { company, role }); motivationA = motData.result; 
   } catch(e) {}
   
   const qaWithMotivation = [
