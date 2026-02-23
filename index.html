@@ -934,11 +934,26 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       <div class="modal-subtitle">Paste a LinkedIn or Indeed job URL to auto-fill details</div>
     </div>
 
+    <!-- Bookmarklet Section -->
+    <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:10px;padding:14px;margin-bottom:16px;color:white;">
+      <div style="font-weight:600;margin-bottom:4px;">🔖 Faster: Use the 1-Click Bookmarklet</div>
+      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;">Drag this to your bookmarks bar. Click it on any LinkedIn or Indeed job page to send the job straight to your tracker!</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <a id="bookmarkletLink" href="#" 
+           style="background:white;color:#764ba2;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;"
+           draggable="true"
+           onclick="event.preventDefault();toast('Drag me to your bookmarks bar! 👆','success');">
+          🔖 Send to Job Tracker
+        </a>
+        <span style="font-size:12px;opacity:0.8;">← drag to bookmarks bar</span>
+      </div>
+    </div>
+
     <div style="margin-bottom:16px;">
       <label class="form-label">Job URL</label>
       <div style="display:flex;gap:8px;">
         <input id="importUrl" type="url" class="form-input" placeholder="https://www.linkedin.com/jobs/view/... or https://sg.indeed.com/..." style="flex:1;" />
-        <button class="btn btn-primary" onclick="importJobFromUrl()" id="importBtn" style="white-space:nowrap;">🔍 Fetch</button>
+        <button class="btn btn-primary" onclick="importJobFromUrl()" id="importBtn" style="white-space:nowrap;">🔍 Parse URL</button>
       </div>
       <div id="importStatus" style="margin-top:8px;font-size:13px;color:var(--gray-400);"></div>
     </div>
@@ -982,7 +997,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     </div>
 
     <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:12px;color:var(--gray-400);">
-      <strong>💡 Tips:</strong> LinkedIn often requires manual JD paste (login wall). Indeed usually auto-fills. After importing, head to Resume Tailorer to generate your tailored resume.
+      <strong>💡 How to use:</strong> Paste the job URL → click Parse URL → the form fills what it can from the URL. Then <strong>copy the job description from LinkedIn/Indeed</strong> (while logged in on that page) and paste it below. Or use the <strong>🔖 Bookmarklet</strong> to send jobs in 1 click!
     </div>
   </div>
 </div>
@@ -1303,50 +1318,59 @@ function openImportModal() {
   openModal('importJobModal');
 }
 
-async function importJobFromUrl() {
+function importJobFromUrl() {
   const url = document.getElementById('importUrl').value.trim();
   if (!url) { toast('Please paste a URL first', 'error'); return; }
 
-  const btn = document.getElementById('importBtn');
   const status = document.getElementById('importStatus');
-  btn.innerHTML = '<span class="spinner"></span>';
-  btn.disabled = true;
-  status.textContent = 'Fetching job details...';
-  status.style.color = 'var(--gray-400)';
 
-  try {
-    const data = await callBackend('/api/import-job', { url });
+  // Parse what we can from the URL itself (no scraping needed)
+  let company = '', title = '', platform = '';
 
-    // Populate fields with whatever we got
-    if (data.title) document.getElementById('importTitle').value = data.title;
-    if (data.company) document.getElementById('importCompany').value = data.company;
-    if (data.location) document.getElementById('importLocation').value = data.location;
-    if (data.description) document.getElementById('importDescription').value = data.description;
-
-    // Guess role type from title
-    const title = (data.title || '').toLowerCase();
-    const roleSelect = document.getElementById('importRoleType');
-    if (title.includes('product owner') || title.includes('po ')) roleSelect.value = 'Product Owner';
-    else if (title.includes('product manager') || title.includes(' pm')) roleSelect.value = 'Product Manager';
-    else if (title.includes('ai') || title.includes('ml')) roleSelect.value = 'AI Product Manager';
-
-    // Show the form
-    document.getElementById('importFormFields').style.display = 'block';
-
-    // Show status message
-    const icon = data.partial ? '⚠️' : '✅';
-    status.textContent = icon + ' ' + (data.message || 'Done');
-    status.style.color = data.partial ? '#c2410c' : '#15803d';
-
-  } catch(e) {
-    status.textContent = '❌ Error: ' + e.message;
-    status.style.color = '#dc2626';
-    // Still show the form so they can fill manually
-    document.getElementById('importFormFields').style.display = 'block';
+  if (url.includes('linkedin.com')) {
+    platform = 'LinkedIn';
+    // Extract company/title hints from URL slug
+    // e.g. /jobs/view/product-owner-at-grab-123456/
+    const slugMatch = url.match(/\/jobs\/view\/([^/?]+)/);
+    if (slugMatch) {
+      const slug = slugMatch[1].replace(/-\d+$/, ''); // remove trailing job ID
+      const atIdx = slug.lastIndexOf('-at-');
+      if (atIdx > 0) {
+        title = slug.substring(0, atIdx).replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase());
+        company = slug.substring(atIdx + 4).replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase());
+      } else {
+        title = slug.replace(/-/g, ' ').replace(/\w/g, c => c.toUpperCase());
+      }
+    }
+    status.innerHTML = '✅ LinkedIn URL detected! Title & company extracted from URL. <strong>Please paste the job description below</strong> (copy from the LinkedIn page while you're logged in).';
+    status.style.color = '#15803d';
+  } else if (url.includes('indeed.com')) {
+    platform = 'Indeed';
+    status.innerHTML = '✅ Indeed URL detected! <strong>Please paste the job description below</strong> (copy from the Indeed page).';
+    status.style.color = '#15803d';
+  } else if (url.includes('mycareersfuture.gov.sg')) {
+    platform = 'MyCareersFuture';
+    status.innerHTML = '✅ MyCareersFuture URL detected! <strong>Paste the job description below</strong>.';
+    status.style.color = '#15803d';
+  } else {
+    status.textContent = '✅ URL saved. Fill in the details below.';
+    status.style.color = '#15803d';
   }
 
-  btn.innerHTML = '🔍 Fetch';
-  btn.disabled = false;
+  // Pre-fill what we extracted
+  if (title) document.getElementById('importTitle').value = title;
+  if (company) document.getElementById('importCompany').value = company;
+
+  // Guess role type from title
+  const tl = title.toLowerCase();
+  const roleSelect = document.getElementById('importRoleType');
+  if (tl.includes('product owner') || tl.includes(' po ')) roleSelect.value = 'Product Owner';
+  else if (tl.includes('product manager') || tl.includes(' pm')) roleSelect.value = 'Product Manager';
+  else if (tl.includes('ai') || tl.includes('machine learning')) roleSelect.value = 'AI Product Manager';
+  else if (tl.includes('business analyst')) roleSelect.value = 'Business Analyst';
+
+  document.getElementById('importFormFields').style.display = 'block';
+  document.getElementById('importDescription').focus();
 }
 
 function saveImportedJob() {
@@ -2160,6 +2184,91 @@ if (savedGoal) document.getElementById("dailyGoalTarget").value = savedGoal;
 document.getElementById("dailyGoalTarget").addEventListener("change", function() { localStorage.setItem("dailyGoalTarget", this.value); updateGoalDisplay(); });
 
 // API handled server-side — no client key needed
+
+// ─── BOOKMARKLET SETUP ──────────────────────────────────────
+(function setupBookmarklet() {
+  const appUrl = window.location.origin;
+  
+  // The bookmarklet code that runs on LinkedIn/Indeed pages
+  const bookmarkletCode = `
+javascript:(function(){
+  var appUrl='${appUrl}';
+  var title='',company='',jd='',location='Singapore',url=window.location.href;
+  
+  // LinkedIn selectors
+  if(url.includes('linkedin.com')){
+    var t=document.querySelector('h1.t-24,h1.job-title,.job-details-jobs-unified-top-card__job-title h1,.top-card-layout__title');
+    var c=document.querySelector('.job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link,.top-card-layout__card a');
+    var d=document.querySelector('.jobs-description__content,.job-description__content,.jobs-box__html-content');
+    var l=document.querySelector('.job-details-jobs-unified-top-card__bullet,.topcard__flavor--bullet');
+    if(t) title=t.innerText.trim();
+    if(c) company=c.innerText.trim();
+    if(d) jd=d.innerText.trim().substring(0,3000);
+    if(l) location=l.innerText.trim();
+  }
+  
+  // Indeed selectors
+  if(url.includes('indeed.com')){
+    var t=document.querySelector('h1[data-testid="jobsearch-JobInfoHeader-title"],h1.jobsearch-JobInfoHeader-title');
+    var c=document.querySelector('[data-testid="inlineHeader-companyName"] a,[data-testid="inlineHeader-companyName"]');
+    var d=document.querySelector('#jobDescriptionText,.jobsearch-jobDescriptionText');
+    var l=document.querySelector('[data-testid="job-location"]');
+    if(t) title=t.innerText.replace('- job post','').trim();
+    if(c) company=c.innerText.trim();
+    if(d) jd=d.innerText.trim().substring(0,3000);
+    if(l) location=l.innerText.trim();
+  }
+  
+  if(!title && !company){ alert('Could not detect job details on this page. Make sure you are on a job listing page.'); return; }
+  
+  fetch(appUrl+'/api/bookmarklet-add',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({role:title,company:company,jd:jd,location:location,url:url})
+  }).then(r=>r.json()).then(d=>{
+    if(d.success) alert('✅ Added to your Job Tracker!\n\n'+title+' @ '+company);
+    else alert('❌ Error: '+d.error);
+  }).catch(e=>alert('❌ Could not reach your Job Tracker app. Make sure it is running.'));
+})();`;
+
+  // Set the bookmarklet href
+  var el = document.getElementById('bookmarkletLink');
+  if(el) el.href = bookmarkletCode;
+})();
+
+
+// ─── POLL FOR BOOKMARKLET JOBS ──────────────────────────────
+async function checkBookmarkletJobs() {
+  try {
+    const data = await callBackend('/api/bookmarklet-jobs', {});
+    // callBackend uses POST - let's use fetch directly for this GET
+  } catch(e) {}
+}
+
+// Poll via GET every 30 seconds when tab3 is visible
+async function pollBookmarkletJobs() {
+  try {
+    const res = await fetch('/api/bookmarklet-jobs');
+    const data = await res.json();
+    if (data.jobs && data.jobs.length > 0) {
+      data.jobs.forEach(j => {
+        // Only add if not already in tracker
+        if (!jobs.find(existing => existing.url === j.url && existing.company === j.company)) {
+          jobs.push(j);
+        }
+      });
+      saveJobs(jobs);
+      renderKanban();
+      updateStats();
+      toast(`🔖 ${data.jobs.length} job(s) added from bookmarklet!`, 'success');
+    }
+  } catch(e) {}
+}
+// Poll every 30 seconds
+setInterval(pollBookmarkletJobs, 30000);
+// Also poll immediately on load
+pollBookmarkletJobs();
+
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
 </script>
 </body>

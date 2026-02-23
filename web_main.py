@@ -518,6 +518,83 @@ Return ONLY the JSON array, no other text."""
     except Exception as e:
         return jsonify({"error": f"Could not parse AI response: {str(e)}", "raw": result}), 500
 
+
+@app.route("/api/bookmarklet-add", methods=["POST", "OPTIONS"])
+def bookmarklet_add():
+    # Handle CORS preflight - bookmarklet calls come from linkedin.com/indeed.com
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
+    data = request.json
+    role = data.get("role", "").strip()
+    company = data.get("company", "").strip()
+
+    if not role or not company:
+        resp = jsonify({"success": False, "error": "Missing job title or company"})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 400
+
+    # Store in a simple JSON file on the server
+    import json, os
+    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+    
+    try:
+        if os.path.exists(jobs_file):
+            with open(jobs_file, "r") as f:
+                saved = json.load(f)
+        else:
+            saved = []
+
+        new_job = {
+            "id": int(__import__("time").time() * 1000),
+            "role": role,
+            "company": company,
+            "jd": data.get("jd", ""),
+            "location": data.get("location", "Singapore"),
+            "url": data.get("url", ""),
+            "status": "wishlist",
+            "date": __import__("datetime").date.today().strftime("%d/%m/%Y"),
+            "notes": "",
+            "salary": "",
+            "isDemo": False,
+            "fromBookmarklet": True
+        }
+
+        saved.append(new_job)
+        with open(jobs_file, "w") as f:
+            json.dump(saved, f)
+
+        resp = jsonify({"success": True, "job": new_job})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    except Exception as e:
+        resp = jsonify({"success": False, "error": str(e)})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 500
+
+
+@app.route("/api/bookmarklet-jobs", methods=["GET"])
+def bookmarklet_jobs():
+    """Frontend polls this to get jobs added via bookmarklet"""
+    import json, os
+    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+    if not os.path.exists(jobs_file):
+        return jsonify({"jobs": []})
+    try:
+        with open(jobs_file, "r") as f:
+            saved = json.load(f)
+        # Clear the file after sending (jobs are now in frontend localStorage)
+        with open(jobs_file, "w") as f:
+            json.dump([], f)
+        return jsonify({"jobs": saved})
+    except Exception as e:
+        return jsonify({"jobs": [], "error": str(e)})
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
