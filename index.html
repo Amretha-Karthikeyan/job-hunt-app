@@ -2256,14 +2256,51 @@ function copyBookmarklet() {
     + 'location.href="' + appUrl + '/capture?title="+encodeURIComponent(t)+"&company="+encodeURIComponent(c||"Unknown")+"&location="+encodeURIComponent(l)+"&url="+encodeURIComponent(cleanUrl);'
   + '}())';
 
-  navigator.clipboard.writeText(code).then(function() {
+  // Robust copy — works on all browsers including non-HTTPS
+  var copied = false;
+
+  // Method 1: modern clipboard API
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(code).then(function() {
+      showCopied();
+    }).catch(function() {
+      fallbackCopy(code);
+    });
+  } else {
+    fallbackCopy(code);
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showCopied();
+    } catch(e) {
+      // Last resort: show in prompt
+      window.prompt('Copy this bookmarklet (Ctrl+A then Ctrl+C):', text);
+    }
+    document.body.removeChild(ta);
+  }
+
+  function showCopied() {
     document.getElementById('bmCopied').style.display = 'block';
     var btn = document.getElementById('copyBmBtn');
     btn.textContent = '✅ Copied!';
-    setTimeout(function(){ btn.textContent = '📋 Copy Bookmarklet Code'; }, 3000);
-  }).catch(function() {
-    window.prompt('Copy this bookmarklet code:', code);
-  });
+    btn.style.background = '#dcfce7';
+    btn.style.color = '#15803d';
+    setTimeout(function(){
+      btn.textContent = '📋 Copy Bookmarklet Code';
+      btn.style.background = 'white';
+      btn.style.color = '#764ba2';
+    }, 3000);
+  }
 }
 // ─── POLL FOR BOOKMARKLET JOBS ──────────────────────────────
 async function checkBookmarkletJobs() {
