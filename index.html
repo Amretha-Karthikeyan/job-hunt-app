@@ -936,16 +936,24 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
     <!-- Bookmarklet Section -->
     <div style="background:linear-gradient(135deg,#667eea,#764ba2);border-radius:10px;padding:14px;margin-bottom:16px;color:white;">
-      <div style="font-weight:600;margin-bottom:4px;">🔖 Faster: Use the 1-Click Bookmarklet</div>
-      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;">Drag to your bookmarks bar. Works in <strong>2 modes</strong>:<br>① On a <strong>single job page</strong> → adds that one job<br>② On <strong>linkedin.com/my-items/saved-jobs/</strong> → imports ALL your saved jobs at once! 🚀</div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <a id="bookmarkletLink" href="#" 
-           style="background:white;color:#764ba2;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;text-decoration:none;cursor:grab;"
-           draggable="true"
-           onclick="event.preventDefault();toast('Drag me to your bookmarks bar! 👆','success');">
-          🔖 Send to Job Tracker
-        </a>
-        <span style="font-size:12px;opacity:0.8;">← drag to bookmarks bar</span>
+      <div style="font-weight:600;margin-bottom:6px;">🔖 1-Click Bookmarklet — Import from LinkedIn</div>
+      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;">
+        ① On any <strong>LinkedIn job page</strong> → adds that job instantly<br>
+        ② On <strong>linkedin.com/my-items/saved-jobs/</strong> → imports ALL saved jobs at once 🚀
+      </div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px;">One-time setup (30 seconds):</div>
+      <div style="font-size:12px;opacity:0.9;margin-bottom:10px;line-height:1.9;">
+        1. Show bookmarks bar: <strong>Cmd+Shift+B</strong> (Mac) / <strong>Ctrl+Shift+B</strong> (Windows)<br>
+        2. Click <strong>Copy Code</strong> below<br>
+        3. Right-click bookmarks bar → <strong>Add page</strong> (Chrome) or <strong>New Bookmark</strong> (Safari)<br>
+        4. Name it <strong>Send to Job Tracker</strong>, paste code as the URL → Save
+      </div>
+      <button onclick="copyBookmarklet()" id="copyBmBtn"
+        style="background:white;color:#764ba2;border:none;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;width:100%;margin-bottom:6px;">
+        📋 Copy Bookmarklet Code
+      </button>
+      <div id="bmCopied" style="display:none;font-size:12px;text-align:center;opacity:0.95;">
+        ✅ Copied! Right-click bookmarks bar → Add page → paste as URL → Save
       </div>
     </div>
 
@@ -1574,10 +1582,12 @@ const COL_LABELS = { saved:"💾 Saved", applied:"📨 Applied", screen:"📞 Re
 const COL_COLORS = { saved:"#6b7280", applied:"#3b82f6", screen:"#f59e0b", interview:"#8b5cf6", offer:"#10b981", rejected:"#ef4444" };
 
 function getJobs() { return JSON.parse(localStorage.getItem("jobs") || "[]"); }
-function saveJobs(jobs) { localStorage.setItem("jobs", JSON.stringify(jobs)); }
+function saveJobs(jobs) { localStorage.setItem("jobs", JSON.stringify(jobs)); localStorage.setItem("jobs_initialized", "true"); }
 
 function initSampleJobs() {
-  if (getJobs().length > 0) return;
+  // Only show demo cards on first ever visit — not after user clears them
+  if (localStorage.getItem("jobs_initialized")) return;
+  localStorage.setItem("jobs_initialized", "true");
   const today = new Date();
   const d8 = new Date(today); d8.setDate(today.getDate()-8);
   const d3 = new Date(today); d3.setDate(today.getDate()-3);
@@ -2187,71 +2197,75 @@ document.getElementById("dailyGoalTarget").addEventListener("change", function()
 // API handled server-side — no client key needed
 
 // ─── BOOKMARKLET SETUP ──────────────────────────────────────
-(function setupBookmarklet() {
+function copyBookmarklet() {
   var appUrl = window.location.origin;
 
-  // Build bookmarklet as plain string — no nested template literals
-  var bm = '(function(){' +
-    'var au="' + '" + appUrl + "' + '";' +
-    'var url=window.location.href;' +
-    'var title="",company="",jd="",location="Singapore";' +
+  // Build as array of strings then join — no nested template literals, no quote conflicts
+  var parts = [
+    '(function(){',
+    'var au="', appUrl, '";',
+    'var url=window.location.href,title="",company="",jd="",loc="Singapore";',
 
-    // ── BULK: Saved Jobs page
-    'if(url.includes("my-items")||url.includes("jobs/saved")){' +
-      'var cards=document.querySelectorAll("[data-job-id],li.ember-view.jobs-search-results__list-item,.job-card-container--clickable");' +
-      'var out=[];' +
-      'cards.forEach(function(c){' +
-        'var t=c.querySelector(".job-card-list__title,.job-card-list__title--link,.job-card-container__link strong");' +
-        'var co=c.querySelector(".job-card-container__company-name,.artdeco-entity-lockup__subtitle");' +
-        'var a=c.querySelector("a[href*='/jobs/view/']");' +
-        'if(t&&co)out.push({role:t.innerText.trim(),company:co.innerText.trim(),location:"Singapore",url:a?"https://www.linkedin.com"+a.getAttribute("href").split("?")[0]:"",jd:"",status:"wishlist"});' +
-      '});' +
-      'if(!out.length){alert("No saved jobs found. Make sure you are on linkedin.com/my-items/saved-jobs/ and jobs have loaded.");return;}' +
-      'if(!confirm("Found "+out.length+" saved jobs! Send all to your Job Tracker?"))return;' +
-      'fetch(au+"/api/bookmarklet-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:out})})' +
-        '.then(function(r){return r.json();})' +
-        '.then(function(d){if(d.success)alert("Added "+d.count+" jobs to your tracker!");else alert("Error: "+d.error);})' +
-        '.catch(function(e){alert("Cannot reach tracker: "+e.message);});' +
-      'return;' +
-    '}' +
+    // BULK MODE — saved jobs page
+    'if(url.indexOf("my-items")>-1||url.indexOf("jobs/saved")>-1){',
+      'var cards=document.querySelectorAll(".job-card-container--clickable,.job-card-container,li.ember-view.jobs-search-results__list-item");',
+      'var out=[];',
+      'cards.forEach(function(c){',
+        'var t=c.querySelector(".job-card-list__title,.job-card-list__title--link,.artdeco-entity-lockup__title");',
+        'var co=c.querySelector(".job-card-container__company-name,.artdeco-entity-lockup__subtitle");',
+        'var a=c.querySelector("a");',
+        'if(t&&co)out.push({role:t.innerText.trim(),company:co.innerText.trim(),location:"Singapore",url:a?a.href.split("?")[0]:"",jd:"",status:"wishlist"});',
+      '});',
+      'if(!out.length){alert("No saved jobs found.\nMake sure you are on:\nlinkedin.com/my-items/saved-jobs/\nand scroll down to load all jobs.");return;}',
+      'if(!confirm("Found "+out.length+" jobs! Send all to your Job Tracker?"))return;',
+      'fetch(au+"/api/bookmarklet-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:out})})',
+      '.then(function(r){return r.json();})',
+      '.then(function(d){if(d.success)alert("\u2705 "+d.count+" jobs added to your tracker!");else alert("Error: "+d.error);})',
+      '.catch(function(e){alert("Could not reach Job Tracker:\n"+e.message);});',
+      'return;',
+    '}',
 
-    // ── SINGLE: LinkedIn job page
-    'if(url.includes("linkedin.com")){' +
-      'var t=document.querySelector(".job-details-jobs-unified-top-card__job-title h1,.top-card-layout__title,h1.t-24");' +
-      'var c=document.querySelector(".job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link");' +
-      'var d=document.querySelector(".jobs-description__content,.jobs-box__html-content");' +
-      'var l=document.querySelector(".job-details-jobs-unified-top-card__bullet,.topcard__flavor--bullet");' +
-      'if(t)title=t.innerText.trim();' +
-      'if(c)company=c.innerText.trim();' +
-      'if(d)jd=d.innerText.trim().substring(0,3000);' +
-      'if(l)location=l.innerText.trim();' +
-    '}' +
+    // SINGLE MODE — LinkedIn individual job page
+    'if(url.indexOf("linkedin.com")>-1){',
+      'var t=document.querySelector(".job-details-jobs-unified-top-card__job-title h1,.top-card-layout__title,h1");',
+      'var c=document.querySelector(".job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link,.job-details-jobs-unified-top-card__company-name");',
+      'var d=document.querySelector(".jobs-description__content,.jobs-box__html-content");',
+      'var l=document.querySelector(".job-details-jobs-unified-top-card__bullet,.topcard__flavor--bullet");',
+      'if(t)title=t.innerText.trim();',
+      'if(c)company=c.innerText.trim();',
+      'if(d)jd=d.innerText.trim().substring(0,3000);',
+      'if(l)loc=l.innerText.trim();',
+    '}',
 
-    // ── SINGLE: Indeed job page
-    'if(url.includes("indeed.com")){' +
-      'var t=document.querySelector("#jobDescriptionTitle")||document.querySelector("h1");' +
-      'var c=document.querySelector(".jobsearch-InlineCompanyRating-companyHeader");' +
-      'var d=document.querySelector("#jobDescriptionText");' +
-      'var l=document.querySelector(".jobsearch-JobInfoHeader-subtitle");' +
-      'if(t)title=t.innerText.replace("- job post","").trim();' +
-      'if(c)company=c.innerText.trim();' +
-      'if(d)jd=d.innerText.trim().substring(0,3000);' +
-      'if(l)location=l.innerText.trim();' +
-    '}' +
+    // SINGLE MODE — Indeed individual job page
+    'if(url.indexOf("indeed.com")>-1){',
+      'var t=document.querySelector("h1");',
+      'var c=document.querySelector(".jobsearch-InlineCompanyRating-companyHeader");',
+      'var d=document.querySelector("#jobDescriptionText");',
+      'if(t)title=t.innerText.replace("- job post","").trim();',
+      'if(c)company=c.innerText.trim();',
+      'if(d)jd=d.innerText.trim().substring(0,3000);',
+    '}',
 
-    'if(!title&&!company){alert("No job detected on this page.\nTry a single job listing, or go to linkedin.com/my-items/saved-jobs/ for bulk import.");return;}' +
-    'fetch(au+"/api/bookmarklet-add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:title,company:company,jd:jd,location:location,url:url})})' +
-      '.then(function(r){return r.json();})' +
-      '.then(function(d){if(d.success)alert("Added to Job Tracker!\n"+title+" @ "+company);else alert("Error: "+d.error);})' +
-      '.catch(function(e){alert("Cannot reach tracker: "+e.message);});' +
-  '})();';
+    'if(!title&&!company){alert("No job found on this page.\n\nFor bulk import, go to:\nlinkedin.com/my-items/saved-jobs/");return;}',
+    'fetch(au+"/api/bookmarklet-add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({role:title,company:company,jd:jd,location:loc,url:url})})',
+    '.then(function(r){return r.json();})',
+    '.then(function(d){if(d.success)alert("\u2705 Added to Job Tracker!\n"+title+" @ "+company);else alert("Error: "+d.error);})',
+    '.catch(function(e){alert("Could not reach Job Tracker:\n"+e.message);});',
+    '})()'
+  ];
+  var code = 'javascript:' + parts.join('');
 
-  // Replace appUrl placeholder properly
-  bm = bm.replace('" + appUrl + "', appUrl);
-
-  var el = document.getElementById('bookmarkletLink');
-  if (el) el.href = 'javascript:' + bm;
-})();
+  navigator.clipboard.writeText(code).then(function() {
+    document.getElementById('bmCopied').style.display = 'block';
+    var btn = document.getElementById('copyBmBtn');
+    btn.textContent = '✅ Copied!';
+    setTimeout(function(){ btn.textContent = '📋 Copy Bookmarklet Code'; }, 3000);
+  }).catch(function() {
+    // Fallback: show in a prompt box for manual copy
+    window.prompt('Copy this — then paste as URL when creating a new bookmark:', code);
+  });
+}
 // ─── POLL FOR BOOKMARKLET JOBS ──────────────────────────────
 async function checkBookmarkletJobs() {
   try {
