@@ -685,6 +685,89 @@ def bookmarklet_bulk():
 def ping():
     return "ok", 200
 
+
+@app.route("/capture")
+def capture():
+    """Bookmarklet redirects here with job details as URL params"""
+    title = request.args.get("title", "").strip()
+    company = request.args.get("company", "").strip()
+    location = request.args.get("location", "Singapore").strip()
+    url = request.args.get("url", "").strip()
+
+    if not title or not company:
+        return """<html><body style="font-family:sans-serif;text-align:center;padding:60px;">
+            <h2>❌ Could not detect job details</h2>
+            <p>Make sure you are on a LinkedIn or Indeed job listing page.</p>
+            <button onclick="history.back()" style="padding:10px 24px;font-size:16px;cursor:pointer;">← Go Back</button>
+            </body></html>"""
+
+    import json, os, time
+    from datetime import date
+
+    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+    try:
+        existing = json.load(open(jobs_file)) if os.path.exists(jobs_file) else []
+    except:
+        existing = []
+
+    # Dedup check
+    clean_url = url.split("?")[0]
+    already = any(j.get("url","").split("?")[0] == clean_url or
+                  (j.get("role","") == title and j.get("company","") == company)
+                  for j in existing)
+
+    if not already:
+        existing.append({
+            "id": int(time.time() * 1000),
+            "role": title,
+            "company": company,
+            "location": location,
+            "url": url,
+            "jd": "",
+            "status": "wishlist",
+            "date": date.today().strftime("%d/%m/%Y"),
+            "notes": "",
+            "salary": "",
+            "isDemo": False,
+            "fromBookmarklet": True
+        })
+        with open(jobs_file, "w") as f:
+            json.dump(existing, f)
+        msg = f"✅ <strong>{title}</strong> at <strong>{company}</strong> added to your Job Tracker!"
+        color = "#15803d"
+    else:
+        msg = f"⚠️ <strong>{title}</strong> at <strong>{company}</strong> is already in your tracker."
+        color = "#c2410c"
+
+    app_url = request.host_url.rstrip('/')
+    return f"""<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Saved!</title>
+<style>
+  body {{ font-family: -apple-system, sans-serif; background: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+  .card {{ background: white; border-radius: 16px; padding: 40px; max-width: 420px; width: 90%; box-shadow: 0 4px 24px rgba(0,0,0,0.1); text-align: center; }}
+  h2 {{ color: {color}; margin-bottom: 8px; font-size: 22px; }}
+  p {{ color: #64748b; margin-bottom: 24px; font-size: 15px; line-height: 1.5; }}
+  .btn {{ display: inline-block; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px; cursor: pointer; border: none; margin: 6px; }}
+  .btn-primary {{ background: #6366f1; color: white; }}
+  .btn-ghost {{ background: #f1f5f9; color: #475569; }}
+</style>
+</head><body>
+<div class="card">
+  <div style="font-size:48px;margin-bottom:16px;">{'🎯' if not already else '📌'}</div>
+  <h2>{'Job Saved!' if not already else 'Already Saved'}</h2>
+  <p>{msg}</p>
+  <a href="{app_url}" class="btn btn-primary">Open Job Tracker</a>
+  <button onclick="history.back()" class="btn btn-ghost">← Back to LinkedIn</button>
+</div>
+<script>
+  // Auto-close and go back to LinkedIn after 3 seconds if opened in same tab
+  setTimeout(function() {{ history.back(); }}, 3000);
+</script>
+</body></html>"""
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
