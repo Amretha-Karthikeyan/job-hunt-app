@@ -514,7 +514,7 @@ Amretha is ACTIVELY LEAVING consulting — a consulting role should score maximu
 Flag consulting roles clearly in the reason field so she can deprioritise them immediately.
 
 VISA RULE — HARD OVERRIDE:
-If the job description contains any of these phrases: "no visa sponsorship", "no sponsorship", "candidates must have right to work", "must be a Singapore citizen or PR", "singaporeans and PRs only", "no work pass sponsorship" — score it 0/10, label it ❌ Weak Fit, priority Skip, and reason must say "This role explicitly states no visa sponsorship — not worth applying." regardless of any other fit factors.
+If the job description contains any of these phrases: "no visa sponsorship", "no sponsorship", "candidates must have right to work", "must be a Singapore citizen or PR", "singaporeans and PRs only", "no work pass sponsorship" — score it 0/10 (zero score), label it ❌ Weak Fit, priority Skip, and reason must say "This role explicitly states no visa sponsorship — not worth applying." regardless of any other fit factors.
 
 Return ONLY the JSON array, no other text."""
 
@@ -638,17 +638,19 @@ def bookmarklet_bulk():
             saved = []
 
         # Avoid duplicates by URL or title+company combo
-        existing_keys = set()
+        seen_urls = set()
+        seen_tc   = set()
         for j in saved:
-            if j.get("url"):
-                existing_keys.add(j["url"].split("?")[0])
-            else:
-                existing_keys.add(f"{j.get('role','')}|{j.get('company','')}")
+            u = j.get("url","").split("?")[0]
+            tc = (j.get("role","").strip().lower() + "|" + j.get("company","").strip().lower())
+            if u: seen_urls.add(u)
+            seen_tc.add(tc)
 
         added = 0
         for job in incoming_jobs:
-            key = job.get("url", "").split("?")[0] if job.get("url") else f"{job.get('role','')}|{job.get('company','')}"
-            if key in existing_keys:
+            u  = job.get("url","").split("?")[0]
+            tc = (job.get("role","").strip().lower() + "|" + job.get("company","").strip().lower())
+            if (u and u in seen_urls) or tc in seen_tc:
                 continue
             new_job = {
                 "id": int(time.time() * 1000) + added,
@@ -693,6 +695,7 @@ def capture():
     company = request.args.get("company", "").strip()
     location = request.args.get("location", "Singapore").strip()
     url = request.args.get("url", "").strip()
+    jd = request.args.get("jd", "").strip()
 
     if not title:
         title = "Unknown Role"
@@ -721,7 +724,7 @@ def capture():
             "company": company,
             "location": location,
             "url": url,
-            "jd": "",
+            "jd": jd,
             "status": "wishlist",
             "date": date.today().strftime("%d/%m/%Y"),
             "notes": "",
@@ -784,15 +787,20 @@ def capture_bulk():
     except:
         existing = []
 
-    seen = set()
+    # Build lookup sets for both URL and title+company
+    seen_urls = set()
+    seen_tc   = set()
     for j in existing:
-        key = j.get("url","").split("?")[0] or (j.get("role","") + "|" + j.get("company",""))
-        seen.add(key)
+        u = j.get("url","").split("?")[0]
+        tc = (j.get("role","").strip().lower() + "|" + j.get("company","").strip().lower())
+        if u: seen_urls.add(u)
+        seen_tc.add(tc)
 
     added = 0
     for job in incoming:
-        key = job.get("url","").split("?")[0] or (job.get("role","") + "|" + job.get("company",""))
-        if key in seen:
+        u  = job.get("url","").split("?")[0]
+        tc = (job.get("role","").strip().lower() + "|" + job.get("company","").strip().lower())
+        if (u and u in seen_urls) or tc in seen_tc:
             continue
         existing.append({
             "id": int(time.time() * 1000) + added,

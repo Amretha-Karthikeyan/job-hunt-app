@@ -950,7 +950,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       </div>
       <textarea id="bookmarkletBox" readonly
         style="width:100%;height:60px;font-size:10px;font-family:monospace;border-radius:6px;padding:8px;box-sizing:border-box;background:#1e1b4b;color:#a5b4fc;border:none;resize:none;cursor:text;"
-        onclick="this.select();"
+        onclick="this.select();" onfocus="this.select();"
         placeholder="Loading...">Loading bookmarklet code...</textarea>
       <div style="font-size:11px;opacity:0.8;margin-top:6px;text-align:center;">👆 Click the box to select all, then Cmd+C / Ctrl+C to copy</div>
     </div>
@@ -1322,6 +1322,7 @@ function openImportModal() {
   document.getElementById('importDescription').value = '';
   document.getElementById('importLocation').value = 'Singapore';
   openModal('importJobModal');
+  copyBookmarklet();
 }
 
 function importJobFromUrl() {
@@ -1664,8 +1665,9 @@ function renderCard(j) {
     </div>
     <div class="job-card-date">Applied: ${sgDate(j.dateApplied)} · ${j.source || "Unknown source"}</div>
     ${j.notes ? `<div class="job-card-notes">${j.notes}</div>` : ""}
+    ${j.jd ? `<div style="font-size:10px;color:var(--gray-400);margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${j.jd.substring(0,200)}">📄 ${j.jd.substring(0,80)}...</div>` : ""}
     <div class="job-card-actions">
-      ${j.url ? `<button class="btn btn-xs btn-primary" onclick="window.open('${j.url}','_blank')">🔗 Apply</button>` : ""}
+      ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-xs btn-primary" style="text-decoration:none;">🔗 Apply</a>` : '<span style="font-size:10px;color:var(--gray-400);">No link saved</span>'}
       <button class="btn btn-xs btn-secondary" onclick="openApplyKitForJob('${j.id}')">⚡ Kit</button>
       <button class="btn btn-xs btn-ghost" onclick="openChecklist('${j.id}')">☑ List</button>
       <button class="btn btn-xs" style="background:#e0f2fe;color:#0369a1;border-radius:6px;border:none;cursor:pointer;padding:4px 8px;font-size:11px;font-weight:600;" onclick="quickMove('${j.id}','screen')">📞</button>
@@ -2200,6 +2202,8 @@ function copyBookmarklet() {
 
   var code = 'javascript:void(function(){'
     + 'var u=location.href;'
+
+    // ── BULK MODE ──────────────────────────────────────────────────
     + 'if(u.indexOf("my-items")>-1||u.indexOf("saved-jobs")>-1){'
       + 'var out=[];'
       + 'var cards=document.querySelectorAll(".job-card-container,.job-card-list,.scaffold-layout__list-item,li");'
@@ -2210,7 +2214,7 @@ function copyBookmarklet() {
         + 'for(var i=0;i<ts.length;i++){var el=card.querySelector(ts[i]);if(el&&el.innerText.trim().length>2){t=el.innerText.trim();break;}}'
         + 'for(var i=0;i<cs.length;i++){var el=card.querySelector(cs[i]);if(el&&el.innerText.trim().length>2){c=el.innerText.trim();break;}}'
         + 'var a=card.querySelector("a[href*='/jobs/view/']");'
-        + 'if(t.length>2&&c.length>2)out.push({role:t,company:c,location:"Singapore",url:a?a.href.split("?")[0]:"",jd:"",status:"wishlist"});'
+        + 'if(t.length>2&&c.length>2)out.push({role:t,company:c,location:"Singapore",url:a?a.href:"",jd:"",status:"wishlist"});'
       + '});'
       + 'var seen={};out=out.filter(function(j){var k=j.role+"|"+j.company;if(seen[k])return false;seen[k]=true;return true;});'
       + 'if(!out.length){alert("No jobs found. Scroll down to load all saved jobs first.");return;}'
@@ -2220,29 +2224,37 @@ function copyBookmarklet() {
       + 'f.appendChild(inp);document.body.appendChild(f);f.submit();'
       + 'return;'
     + '}'
-    + 'var t="",c="",l="Singapore";'
+
+    // ── SINGLE MODE ────────────────────────────────────────────────
+    + 'var t="",c="",l="Singapore",jd="";'
+
+    // Primary: page title — always reliable
     + 'var pt=document.title.replace(/\s*[|]\s*LinkedIn.*/i,"").replace(/\s*-\s*LinkedIn.*/i,"").trim();'
     + 'var ai=pt.lastIndexOf(" at ");'
     + 'if(ai>-1){t=pt.substring(0,ai).trim();c=pt.substring(ai+4).trim();}'
     + 'else{t=pt.trim();}'
+
+    // Secondary: DOM selectors override if better data found
     + 'if(u.indexOf("linkedin.com")>-1){'
       + 'var ts=["h1.t-24","h1.t-bold",".job-details-jobs-unified-top-card__job-title h1",".top-card-layout__title","h1"];'
       + 'for(var i=0;i<ts.length;i++){var el=document.querySelector(ts[i]);if(el&&el.innerText.trim().length>2){t=el.innerText.trim();break;}}'
       + 'var cs=[".job-details-jobs-unified-top-card__company-name a",".topcard__org-name-link","[class*=company-name] a","[class*=company-name]"];'
       + 'for(var i=0;i<cs.length;i++){var el=document.querySelector(cs[i]);if(el&&el.innerText.trim().length>2){c=el.innerText.trim();break;}}'
+      + 'var le=document.querySelector(".job-details-jobs-unified-top-card__bullet,[class*=workplace-type]");'
+      + 'if(le&&le.innerText.trim())l=le.innerText.trim();'
+      // Capture JD
+      + 'var de=document.querySelector(".jobs-description__content,.jobs-box__html-content,.job-description__content,[class*=description__content]");'
+      + 'if(de)jd=de.innerText.trim().substring(0,4000);'
     + '}'
-    + 'var cleanUrl=u.split("?")[0];'
-    + 'if(!t||t.length<2){alert("Could not detect job title. Wait for page to load fully.");return;}'
-    + 'if(!confirm("Add to Job Tracker?\n\nRole: "+t+"\nCompany: "+(c||"Unknown")))return;'
-    + 'location.href="' + appUrl + '/capture?title="+encodeURIComponent(t)+"&company="+encodeURIComponent(c||"Unknown")+"&location="+encodeURIComponent(l)+"&url="+encodeURIComponent(cleanUrl);'
+
+    + 'if(!t||t.length<2){alert("Could not detect job title. Wait for the page to fully load.");return;}'
+    // Keep FULL URL including tracking params so the Apply button works
+    + 'if(!confirm("Add to Job Tracker?\n\nRole: "+t+"\nCompany: "+(c||"Unknown")+"\n"+(jd?"\u2705 Job description captured":"\u26a0\ufe0f No JD found — AI ranking will be limited")))return;'
+    + 'location.href="' + appUrl + '/capture?title="+encodeURIComponent(t)+"&company="+encodeURIComponent(c||"Unknown")+"&location="+encodeURIComponent(l)+"&jd="+encodeURIComponent(jd)+"&url="+encodeURIComponent(u.split("?")[0]);'
   + '}())';
 
-  // Write into the textarea — no clipboard API needed
   var box = document.getElementById('bookmarkletBox');
-  if (box) {
-    box.value = code;
-    box.select();
-  }
+  if (box) { box.value = code; box.select(); }
 }
 // ─── POLL FOR BOOKMARKLET JOBS ──────────────────────────────
 async function checkBookmarkletJobs() {
@@ -2277,7 +2289,6 @@ setInterval(pollBookmarkletJobs, 30000);
 pollBookmarkletJobs();
 
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
-copyBookmarklet();
 </script>
 </body>
 </html>
