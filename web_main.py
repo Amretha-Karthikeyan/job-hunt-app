@@ -811,8 +811,12 @@ def capture_bulk():
             "url": job.get("url",""),
             "jd": "",
             "status": "wishlist",
-            "date": date.today().strftime("%d/%m/%Y"),
-            "notes": "", "salary": "", "isDemo": False, "fromBookmarklet": True
+            "roleType": job.get("roleType","Business Analyst"),
+            "priority": job.get("priority","Medium"),
+            "source": "LinkedIn",
+            "dateApplied": date.today().isoformat(),
+            "notes": "", "salary": "", "isDemo": False,
+            "fromBookmarklet": True, "checklist": {}
         })
         if u: seen_urls.add(u)
         seen_tc.add(tc)
@@ -821,33 +825,7 @@ def capture_bulk():
     with open(jobs_file, "w") as f:
         json.dump(existing, f)
 
-    app_url = request.host_url.rstrip("/")
-    total = len(incoming)
-    skipped = total - added
-    return f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Jobs Saved!</title>
-<style>
-  body{{font-family:-apple-system,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}}
-  .card{{background:white;border-radius:16px;padding:40px;max-width:440px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.1);text-align:center;}}
-  h2{{color:#15803d;margin-bottom:8px;}}
-  p{{color:#64748b;margin-bottom:8px;font-size:15px;}}
-  .btn{{display:inline-block;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;margin:6px;}}
-  .btn-primary{{background:#6366f1;color:white;}}
-  .btn-ghost{{background:#f1f5f9;color:#475569;}}
-</style>
-</head><body>
-<div class="card">
-  <div style="font-size:48px;margin-bottom:16px;">🎯</div>
-  <h2>{'Jobs Saved!' if added > 0 else 'Already Up To Date'}</h2>
-  <p><strong>{added} new job{'s' if added != 1 else ''}</strong> added to your tracker.</p>
-  {'<p style="color:#94a3b8;font-size:13px;">'+str(skipped)+' already in tracker — skipped.</p>' if skipped > 0 else ''}
-  <a href="{app_url}" class="btn btn-primary">Open Job Tracker →</a>
-  <button onclick="history.back()" class="btn btn-ghost">← Back to LinkedIn</button>
-</div>
-</body></html>"""
+    return f"ok:{added}", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

@@ -2335,8 +2335,7 @@ function copyBookmarklet() {
       + 'var bar=document.getElementById("jt-bar");'
       + 'var cnt=document.getElementById("jt-count");'
 
-      // Scrape all [data-chameleon-result-urn] cards currently in DOM
-      // Title=line0, skip ", Verified" line, Company=first real line after title
+      // Scrape cards from live DOM
       + 'function scrapeDOM(seen){'
         + 'var jobs=[];'
         + 'document.querySelectorAll("[data-chameleon-result-urn]").forEach(function(card){'
@@ -2352,7 +2351,7 @@ function copyBookmarklet() {
         + 'return jobs;'
       + '}'
 
-      // Find LinkedIn's pagination Next button
+      // Find Next button
       + 'function getNextBtn(){'
         + 'var btns=document.querySelectorAll("button,a");'
         + 'for(var i=0;i<btns.length;i++){'
@@ -2363,47 +2362,38 @@ function copyBookmarklet() {
         + 'return null;'
       + '}'
 
+      // Scroll + paginate
       + 'var allSeen={};var allJobs=[];var page=1;'
-
       + 'while(true){'
-        // Scroll current page to load all cards
-        + 'msg.textContent="Page "+page+": loading jobs...";'
-        + 'for(var s=0;s<8;s++){'
-          + 'window.scrollBy(0,500);'
-          + 'await new Promise(function(r){setTimeout(r,500);});'
-        + '}'
-        // Scrape this page
+        + 'msg.textContent="Page "+page+": loading...";'
+        + 'for(var s=0;s<8;s++){window.scrollBy(0,500);await new Promise(function(r){setTimeout(r,500);});}'
         + 'var fresh=scrapeDOM(allSeen);'
         + 'allJobs=allJobs.concat(fresh);'
         + 'cnt.textContent=allJobs.length+" jobs found";'
         + 'bar.style.width=Math.min(90,page*10)+"%";'
-
-        // Try to go to next page
         + 'var nb=getNextBtn();'
-        + 'if(!nb){msg.textContent="All pages scanned!";break;}'
-        + 'msg.textContent="Page "+page+" done ("+allJobs.length+" total) — going to page "+(page+1)+"...";'
+        + 'if(!nb){msg.textContent="Done!";break;}'
+        + 'msg.textContent="Page "+page+" ("+allJobs.length+" total) — next page...";'
         + 'nb.click();'
-        + 'await new Promise(function(r){setTimeout(r,2000);});'
+        + 'await new Promise(function(r){setTimeout(r,2500);});'
         + 'window.scrollTo(0,0);'
         + 'await new Promise(function(r){setTimeout(r,1000);});'
-        + 'page++;'
-        + 'if(page>20)break;'
+        + 'page++;if(page>25)break;'
       + '}'
 
-      + 'bar.style.width="100%";'
-      + 'ov.remove();'
+      + 'bar.style.width="100%";ov.remove();'
+      + 'if(!allJobs.length){alert("No jobs found.\\n\\nMake sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/");return;}'
+      + 'if(!confirm("Found "+allJobs.length+" job(s) across "+page+" page(s)!\\nClick OK to open your Job Tracker and import them."))return;'
 
-      + 'if(!allJobs.length){alert("No jobs found.\\n\\nMake sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/\\nand the page has fully loaded.");return;}'
-      + 'if(!confirm("Found "+allJobs.length+" saved job(s) across "+page+" page(s)!\\nAdd all to your Job Tracker?"))return;'
-      + 'try{'
-        + 'var res=await fetch("' + appUrl + '/api/bookmarklet-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:allJobs})});'
-        + 'var result=await res.json();'
-        + 'alert("\u2705 "+result.count+" new job(s) added to your tracker!\\n"+((result.total-result.count)||0)+" duplicates skipped.\\n\\nSwitch back to your Job Tracker tab to see them.");'
-      + '}catch(e){alert("Error sending jobs: "+e.message);}'
+      // ── KEY FIX: redirect to tracker with jobs encoded in URL hash ──
+      // No cross-origin request needed — jobs travel in the URL itself
+      + 'var encoded=encodeURIComponent(JSON.stringify(allJobs));'
+      // Split into chunks if too long (URL limit ~50k chars should be fine for 200 jobs)
+      + 'window.open("' + appUrl + '/?import=1#jobs="+encoded,"_blank");'
       + 'return;'
     + '}'
 
-    // ── SINGLE MODE — individual job listing page ─────────────────
+    // ── SINGLE MODE ───────────────────────────────────────────────
     + 'var t="",c="",l="Singapore",jd="";'
     + 'var pt=document.title.replace(/\\s*[|]\\s*LinkedIn.*/i,"").replace(/\\s*-\\s*LinkedIn.*/i,"").trim();'
     + 'var ai=pt.lastIndexOf(" at ");'
@@ -2418,7 +2408,8 @@ function copyBookmarklet() {
     + 'for(var i=0;i<ds.length;i++){var el=document.querySelector(ds[i]);if(el&&el.innerText.trim().length>50){jd=el.innerText.trim().substring(0,4000);break;}}'
     + 'if(!t||t.length<2){alert("Could not detect job title. Wait for the page to fully load.");return;}'
     + 'if(!confirm("Add to Job Tracker?\\n\\nRole: "+t+"\\nCompany: "+(c||"Unknown")+"\\n"+(jd?"\\u2705 JD captured":"\\u26a0\\ufe0f No JD found")))return;'
-    + 'location.href="' + appUrl + '/capture?title="+encodeURIComponent(t)+"&company="+encodeURIComponent(c||"Unknown")+"&location="+encodeURIComponent(l)+"&jd="+encodeURIComponent(jd)+"&url="+encodeURIComponent(u.split("?")[0]);'
+    + 'var encoded=encodeURIComponent(JSON.stringify([{role:t,company:c||"Unknown",location:l,url:u.split("?")[0],jd:jd,status:"wishlist",source:"LinkedIn",priority:"Medium",roleType:"Business Analyst",dateApplied:new Date().toISOString(),notes:"",salary:"",checklist:{}}]));'
+    + 'window.open("' + appUrl + '/?import=1#jobs="+encoded,"_blank");'
   + '}())';
 
   var box = document.getElementById('bookmarkletBox');
@@ -2482,6 +2473,25 @@ function mergeBookmarkletJobs(incoming) {
 setInterval(pollBookmarkletJobs, 10000);
 // Poll immediately on load
 pollBookmarkletJobs();
+
+// ── URL HASH IMPORT — reads jobs passed via bookmarklet URL hash ──
+function checkHashImport() {
+  try {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#jobs=')) return;
+    const raw = decodeURIComponent(hash.slice(6));
+    const incoming = JSON.parse(raw);
+    if (!incoming || !incoming.length) return;
+    // Clear hash from URL without reload
+    history.replaceState(null, '', window.location.pathname);
+    // Merge with dedup
+    mergeBookmarkletJobs(incoming);
+  } catch(e) {
+    console.error('Hash import error:', e);
+  }
+}
+// Run on load
+checkHashImport();
 
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
 </script>
