@@ -2318,13 +2318,13 @@ function copyBookmarklet() {
     // ── BULK MODE — LinkedIn Saved Jobs ────────────────────────────
     + 'if(u.indexOf("my-items")>-1||u.indexOf("saved-jobs")>-1){'
 
-      // ── Progress overlay ──
+      // Progress overlay
       + 'var ov=document.createElement("div");'
       + 'ov.style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;";'
       + 'ov.innerHTML=\'<div style="background:white;border-radius:16px;padding:32px 40px;max-width:360px;width:90%;text-align:center;">'
         + '<div style="font-size:36px;margin-bottom:12px;">🔍</div>'
         + '<div style="font-size:17px;font-weight:700;color:#0a66c2;margin-bottom:8px;">Scanning Saved Jobs</div>'
-        + '<div id="jt-msg" style="font-size:13px;color:#555;margin-bottom:16px;">Scrolling to load all jobs...</div>'
+        + '<div id="jt-msg" style="font-size:13px;color:#555;margin-bottom:16px;">Loading...</div>'
         + '<div style="background:#e8f0fe;border-radius:8px;height:8px;overflow:hidden;">'
           + '<div id="jt-bar" style="background:#0a66c2;height:100%;width:5%;transition:width 0.4s;border-radius:8px;"></div>'
         + '</div>'
@@ -2335,45 +2335,66 @@ function copyBookmarklet() {
       + 'var bar=document.getElementById("jt-bar");'
       + 'var cnt=document.getElementById("jt-count");'
 
-      // ── Scrape cards already in DOM ──
-      // Uses data-chameleon-result-urn as card container (confirmed working)
-      // Title = line 0 of card innerText, Company = line 2
-      + 'function scrapeDOM(){'
-        + 'var jobs=[];var seen={};'
+      // Scrape all [data-chameleon-result-urn] cards currently in DOM
+      // Title=line0, skip ", Verified" line, Company=first real line after title
+      + 'function scrapeDOM(seen){'
+        + 'var jobs=[];'
         + 'document.querySelectorAll("[data-chameleon-result-urn]").forEach(function(card){'
           + 'var a=card.querySelector("a[href*=\'/jobs/view/\']");'
           + 'if(!a)return;'
           + 'var href=a.href.split("?")[0];'
           + 'if(seen[href])return;seen[href]=true;'
-          + 'var lines=card.innerText.trim().split("\\n").map(function(l){return l.trim();}).filter(function(l){return l.length>1;});'
+          + 'var lines=card.innerText.trim().split("\\n").map(function(l){return l.trim();}).filter(function(l){return l.length>1&&l.indexOf("Verified")===-1&&l.indexOf("Posted")===-1&&l.indexOf("applicant")===-1&&l.indexOf("ago")===-1;});'
           + 'var t=lines[0]||"";'
-          + 'var c=lines[2]||lines[1]||"Unknown";'
-          // Clean up ", Verified" if it ends up as company
-          + 'if(c.indexOf("Verified")>-1)c=lines[2]||"Unknown";'
-          + 'if(t.length>2)jobs.push({role:t,company:c,location:"Singapore",url:href,jd:"",status:"wishlist"});'
+          + 'var c=lines[1]||"Unknown";'
+          + 'if(t.length>2)jobs.push({role:t,company:c,location:"Singapore",url:href,jd:"",status:"wishlist",source:"LinkedIn",priority:"Medium",roleType:"Business Analyst",dateApplied:new Date().toISOString(),notes:"",salary:"",checklist:{}});'
         + '});'
         + 'return jobs;'
       + '}'
 
-      // ── Auto-scroll to trigger lazy loading ──
-      + 'var allSeen={};var allJobs=[];var noNewRounds=0;var lastCount=0;'
-      + 'for(var round=0;round<80;round++){'
-        + 'window.scrollBy(0,600);'
-        + 'await new Promise(function(r){setTimeout(r,700);});'
-        + 'var fresh=scrapeDOM();'
-        + 'fresh.forEach(function(j){if(!allSeen[j.url]){allSeen[j.url]=true;allJobs.push(j);}});'
-        + 'bar.style.width=Math.min(90,5+(round*1.1))+"%";'
+      // Find LinkedIn's pagination Next button
+      + 'function getNextBtn(){'
+        + 'var btns=document.querySelectorAll("button,a");'
+        + 'for(var i=0;i<btns.length;i++){'
+          + 'var b=btns[i];'
+          + 'var txt=(b.innerText||b.getAttribute("aria-label")||"").trim().toLowerCase();'
+          + 'if((txt==="next"||txt.indexOf("next page")>-1)&&!b.disabled)return b;'
+        + '}'
+        + 'return null;'
+      + '}'
+
+      + 'var allSeen={};var allJobs=[];var page=1;'
+
+      + 'while(true){'
+        // Scroll current page to load all cards
+        + 'msg.textContent="Page "+page+": loading jobs...";'
+        + 'for(var s=0;s<8;s++){'
+          + 'window.scrollBy(0,500);'
+          + 'await new Promise(function(r){setTimeout(r,500);});'
+        + '}'
+        // Scrape this page
+        + 'var fresh=scrapeDOM(allSeen);'
+        + 'allJobs=allJobs.concat(fresh);'
         + 'cnt.textContent=allJobs.length+" jobs found";'
-        + 'msg.textContent="Scrolling... pass "+(round+1);'
-        + 'if(allJobs.length===lastCount){noNewRounds++;}else{noNewRounds=0;lastCount=allJobs.length;}'
-        + 'if(noNewRounds>=6&&allJobs.length>0)break;'
+        + 'bar.style.width=Math.min(90,page*10)+"%";'
+
+        // Try to go to next page
+        + 'var nb=getNextBtn();'
+        + 'if(!nb){msg.textContent="All pages scanned!";break;}'
+        + 'msg.textContent="Page "+page+" done ("+allJobs.length+" total) — going to page "+(page+1)+"...";'
+        + 'nb.click();'
+        + 'await new Promise(function(r){setTimeout(r,2000);});'
+        + 'window.scrollTo(0,0);'
+        + 'await new Promise(function(r){setTimeout(r,1000);});'
+        + 'page++;'
+        + 'if(page>20)break;'
       + '}'
 
       + 'bar.style.width="100%";'
       + 'ov.remove();'
 
-      + 'if(!allJobs.length){alert("No jobs found.\\n\\nPlease:\\n1. Go to linkedin.com/my-items/saved-jobs/\\n2. Wait for the page to fully load\\n3. Click the bookmarklet again");return;}'
-      + 'if(!confirm("Found "+allJobs.length+" saved job(s)!\\nAdd all to your Job Tracker?"))return;'
+      + 'if(!allJobs.length){alert("No jobs found.\\n\\nMake sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/\\nand the page has fully loaded.");return;}'
+      + 'if(!confirm("Found "+allJobs.length+" saved job(s) across "+page+" page(s)!\\nAdd all to your Job Tracker?"))return;'
       + 'var f=document.createElement("form");f.method="POST";f.action="' + appUrl + '/capture-bulk";'
       + 'var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(allJobs);'
       + 'f.appendChild(inp);document.body.appendChild(f);f.submit();'
@@ -2415,18 +2436,35 @@ async function pollBookmarkletJobs() {
     const res = await fetch('/api/bookmarklet-jobs');
     const data = await res.json();
     if (data.jobs && data.jobs.length > 0) {
+      const existing = getJobs();
+      const existingUrls = new Set(existing.map(j => j.url).filter(Boolean));
+      const existingTC = new Set(existing.map(j => (j.role||'').toLowerCase()+'|'+(j.company||'').toLowerCase()));
+      let added = 0;
       data.jobs.forEach(j => {
-        // Only add if not already in tracker
-        if (!jobs.find(existing => existing.url === j.url && existing.company === j.company)) {
-          jobs.push(j);
+        const tc = (j.role||'').toLowerCase()+'|'+(j.company||'').toLowerCase();
+        if (!existingUrls.has(j.url) && !existingTC.has(tc)) {
+          // Ensure required fields have defaults
+          j.roleType = j.roleType || 'Business Analyst';
+          j.priority = j.priority || 'Medium';
+          j.status = j.status || 'wishlist';
+          j.dateApplied = j.dateApplied || new Date().toISOString();
+          j.source = j.source || 'LinkedIn';
+          j.notes = j.notes || '';
+          j.salary = j.salary || '';
+          j.checklist = j.checklist || {};
+          existing.push(j);
+          added++;
         }
       });
-      saveJobs(jobs);
-      renderKanban();
-      updateStats();
-      toast(`🔖 ${data.jobs.length} job(s) added from bookmarklet!`, 'success');
+      if (added > 0) {
+        saveJobs(existing);
+        renderKanban();
+        updateStats();
+        renderAnalytics();
+        toast(`🔖 ${added} job(s) added to tracker!`, 'success');
+      }
     }
-  } catch(e) {}
+  } catch(e) { console.error('pollBookmarkletJobs error:', e); }
 }
 // Poll every 30 seconds
 setInterval(pollBookmarkletJobs, 30000);
