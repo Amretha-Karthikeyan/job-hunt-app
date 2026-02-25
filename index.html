@@ -1068,6 +1068,57 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   </div>
 </div>
 
+<!-- Job Detail Modal -->
+<div class="modal-overlay" id="jobDetailModal" style="display:none;">
+  <div class="modal" style="max-width:640px;">
+    <button class="modal-close" onclick="closeModal('jobDetailModal')">✕</button>
+    <div class="modal-title" id="jdModalTitle">📋 Job Details</div>
+
+    <!-- Header info row -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--navy);" id="jdModalCompany"></div>
+        <div style="font-size:14px;color:var(--gray-500);margin-top:3px;" id="jdModalRole"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;" id="jdModalBadges"></div>
+      </div>
+      <a id="jdModalApplyBtn" href="#" target="_blank" rel="noopener"
+         style="display:none;flex-shrink:0;padding:10px 20px;background:var(--blue);color:white;border-radius:8px;font-weight:700;font-size:13px;text-decoration:none;white-space:nowrap;box-shadow:0 2px 8px rgba(26,86,219,0.25);">
+        🔗 Apply Now
+      </a>
+    </div>
+
+    <!-- Apply URL display -->
+    <div id="jdModalUrlRow" style="display:none;margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Apply Link</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input id="jdModalUrlText" readonly type="text"
+               style="flex:1;font-size:12px;font-family:monospace;padding:7px 10px;border-radius:6px;border:1.5px solid var(--gray-200);background:var(--gray-50);color:var(--gray-700);outline:none;cursor:text;"
+               onclick="this.select();" />
+        <button class="btn btn-xs btn-secondary" onclick="copyJobUrl()">📋 Copy</button>
+      </div>
+    </div>
+
+    <!-- No URL notice -->
+    <div id="jdModalNoUrl" style="display:none;margin-bottom:14px;padding:10px 14px;background:#fff7ed;border:1.5px solid #fed7aa;border-radius:8px;font-size:12px;color:#92400e;">
+      ⚠️ No apply link saved for this job. Add one by editing the card.
+    </div>
+
+    <!-- JD section -->
+    <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Job Description</div>
+    <div id="jdModalJD"
+         style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--gray-700);max-height:340px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-xs btn-secondary" onclick="copyJobJD()">📋 Copy JD</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="jdModalKitBtn" onclick="">⚡ Generate Apply Kit</button>
+      <button class="btn btn-ghost" onclick="closeModal('jobDetailModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Speed Kit Modal -->
 <div class="modal-overlay" id="speedKitModal" style="display:none;">
   <div class="modal modal-lg" style="max-width:700px;">
@@ -1668,6 +1719,7 @@ function renderCard(j) {
     ${j.jd ? `<div style="font-size:10px;color:var(--gray-400);margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${j.jd.substring(0,200)}">📄 ${j.jd.substring(0,80)}...</div>` : ""}
     <div class="job-card-actions">
       ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-xs btn-primary" style="text-decoration:none;">🔗 Apply</a>` : '<span style="font-size:10px;color:var(--gray-400);">No link saved</span>'}
+      <button class="btn btn-xs btn-secondary" onclick="openJobDetail('${j.id}')">👁 View</button>
       <button class="btn btn-xs btn-secondary" onclick="openApplyKitForJob('${j.id}')">⚡ Kit</button>
       <button class="btn btn-xs btn-ghost" onclick="openChecklist('${j.id}')">☑ List</button>
       <button class="btn btn-xs" style="background:#e0f2fe;color:#0369a1;border-radius:6px;border:none;cursor:pointer;padding:4px 8px;font-size:11px;font-weight:600;" onclick="quickMove('${j.id}','screen')">📞</button>
@@ -1691,6 +1743,66 @@ function deleteJob(id) {
   saveJobs(jobs);
   renderKanban(); updateStats();
   toast("Job removed");
+}
+
+// ========== JOB DETAIL MODAL ==========
+function openJobDetail(id) {
+  const jobs = getJobs();
+  const j = jobs.find(j => j.id === id);
+  if (!j) return;
+
+  document.getElementById("jdModalTitle").textContent = `📋 ${j.company} — ${j.role}`;
+  document.getElementById("jdModalCompany").textContent = j.company;
+  document.getElementById("jdModalRole").textContent = `${j.role}${j.roleType ? " · " + j.roleType : ""}`;
+
+  // Badges
+  const badgeColors = { High:"#fee2e2;color:#991b1b", Medium:"#fef3c7;color:#92400e", Low:"#f0fdf4;color:#166534" };
+  const bc = badgeColors[j.priority] || "var(--gray-100);color:var(--gray-600)";
+  document.getElementById("jdModalBadges").innerHTML = `
+    <span style="background:${bc.split(";")[0]};color:${bc.split(";")[1]?.replace("color:","")};padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.priority || "—"}</span>
+    ${j.status ? `<span style="background:var(--blue-pale);color:var(--blue);padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.status}</span>` : ""}
+    ${j.salary ? `<span style="background:#f0fdf4;color:#166534;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">S$${j.salary}</span>` : ""}
+    ${j.source ? `<span style="background:var(--gray-100);color:var(--gray-600);padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600;">${j.source}</span>` : ""}`;
+
+  // Apply URL
+  if (j.url) {
+    document.getElementById("jdModalApplyBtn").style.display = "inline-flex";
+    document.getElementById("jdModalApplyBtn").href = j.url;
+    document.getElementById("jdModalUrlRow").style.display = "block";
+    document.getElementById("jdModalUrlText").value = j.url;
+    document.getElementById("jdModalNoUrl").style.display = "none";
+  } else {
+    document.getElementById("jdModalApplyBtn").style.display = "none";
+    document.getElementById("jdModalUrlRow").style.display = "none";
+    document.getElementById("jdModalNoUrl").style.display = "block";
+  }
+
+  // JD
+  const jdEl = document.getElementById("jdModalJD");
+  if (j.jd && j.jd.trim()) {
+    jdEl.textContent = j.jd;
+    jdEl.style.color = "var(--gray-700)";
+  } else {
+    jdEl.textContent = "No job description captured. Use the LinkedIn bookmarklet to save jobs with their JD automatically.";
+    jdEl.style.color = "var(--gray-400)";
+  }
+
+  // Kit button
+  document.getElementById("jdModalKitBtn").onclick = () => { closeModal("jobDetailModal"); openApplyKitForJob(id); };
+
+  openModal("jobDetailModal");
+}
+
+function copyJobUrl() {
+  const url = document.getElementById("jdModalUrlText").value;
+  if (!url) { toast("No URL to copy", "error"); return; }
+  navigator.clipboard.writeText(url).then(() => toast("Apply link copied! 📋", "success"));
+}
+
+function copyJobJD() {
+  const text = document.getElementById("jdModalJD").textContent;
+  if (!text.trim()) { toast("No JD to copy", "error"); return; }
+  navigator.clipboard.writeText(text).then(() => toast("JD copied! 📋", "success"));
 }
 
 function updateStats() {
@@ -2214,7 +2326,7 @@ function copyBookmarklet() {
         + 'var cs=["h4","h4.base-search-card__subtitle",".job-card-container__company-name","[class*=company-name]","[class*=subtitle]"];'
         + 'for(var i=0;i<ts.length;i++){var el=card.querySelector(ts[i]);if(el&&el.innerText.trim().length>2){t=el.innerText.trim();break;}}'
         + 'for(var i=0;i<cs.length;i++){var el=card.querySelector(cs[i]);if(el&&el.innerText.trim().length>2){c=el.innerText.trim();break;}}'
-        + 'var a=card.querySelector("a[href*='/jobs/view/']");'
+        + 'var a=card.querySelector("a[href*=\\"/jobs/view/\\"]");'
         + 'if(t.length>2&&c.length>2)out.push({role:t,company:c,location:"Singapore",url:a?a.href:"",jd:"",status:"wishlist"});'
       + '});'
       + 'var seen={};out=out.filter(function(j){var k=j.role+"|"+j.company;if(seen[k])return false;seen[k]=true;return true;});'
