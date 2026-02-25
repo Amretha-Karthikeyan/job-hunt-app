@@ -2395,9 +2395,11 @@ function copyBookmarklet() {
 
       + 'if(!allJobs.length){alert("No jobs found.\\n\\nMake sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/\\nand the page has fully loaded.");return;}'
       + 'if(!confirm("Found "+allJobs.length+" saved job(s) across "+page+" page(s)!\\nAdd all to your Job Tracker?"))return;'
-      + 'var f=document.createElement("form");f.method="POST";f.action="' + appUrl + '/capture-bulk";'
-      + 'var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(allJobs);'
-      + 'f.appendChild(inp);document.body.appendChild(f);f.submit();'
+      + 'try{'
+        + 'var res=await fetch("' + appUrl + '/api/bookmarklet-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:allJobs})});'
+        + 'var result=await res.json();'
+        + 'alert("\u2705 "+result.count+" new job(s) added to your tracker!\\n"+((result.total-result.count)||0)+" duplicates skipped.\\n\\nSwitch back to your Job Tracker tab to see them.");'
+      + '}catch(e){alert("Error sending jobs: "+e.message);}'
       + 'return;'
     + '}'
 
@@ -2436,39 +2438,49 @@ async function pollBookmarkletJobs() {
     const res = await fetch('/api/bookmarklet-jobs');
     const data = await res.json();
     if (data.jobs && data.jobs.length > 0) {
-      const existing = getJobs();
-      const existingUrls = new Set(existing.map(j => j.url).filter(Boolean));
-      const existingTC = new Set(existing.map(j => (j.role||'').toLowerCase()+'|'+(j.company||'').toLowerCase()));
-      let added = 0;
-      data.jobs.forEach(j => {
-        const tc = (j.role||'').toLowerCase()+'|'+(j.company||'').toLowerCase();
-        if (!existingUrls.has(j.url) && !existingTC.has(tc)) {
-          // Ensure required fields have defaults
-          j.roleType = j.roleType || 'Business Analyst';
-          j.priority = j.priority || 'Medium';
-          j.status = j.status || 'wishlist';
-          j.dateApplied = j.dateApplied || new Date().toISOString();
-          j.source = j.source || 'LinkedIn';
-          j.notes = j.notes || '';
-          j.salary = j.salary || '';
-          j.checklist = j.checklist || {};
-          existing.push(j);
-          added++;
-        }
-      });
-      if (added > 0) {
-        saveJobs(existing);
-        renderKanban();
-        updateStats();
-        renderAnalytics();
-        toast(`🔖 ${added} job(s) added to tracker!`, 'success');
-      }
+      mergeBookmarkletJobs(data.jobs);
     }
   } catch(e) { console.error('pollBookmarkletJobs error:', e); }
 }
-// Poll every 30 seconds
-setInterval(pollBookmarkletJobs, 30000);
-// Also poll immediately on load
+
+function mergeBookmarkletJobs(incoming) {
+  const existing = getJobs();
+  // Build dedup sets from existing localStorage jobs
+  const existingUrls = new Set(existing.map(j => (j.url||'').split('?')[0]).filter(Boolean));
+  const existingTC  = new Set(existing.map(j => (j.role||'').trim().toLowerCase() + '|' + (j.company||'').trim().toLowerCase()));
+  let added = 0;
+  incoming.forEach(j => {
+    const url = (j.url||'').split('?')[0];
+    const tc  = (j.role||'').trim().toLowerCase() + '|' + (j.company||'').trim().toLowerCase();
+    if ((url && existingUrls.has(url)) || existingTC.has(tc)) return; // skip duplicate
+    // Fill required fields so card renders correctly in kanban
+    j.id         = j.id || ('bm' + Date.now() + Math.random().toString(36).slice(2,6));
+    j.roleType   = j.roleType   || 'Business Analyst';
+    j.priority   = j.priority   || 'Medium';
+    j.status     = j.status     || 'wishlist';
+    j.dateApplied= j.dateApplied|| new Date().toISOString();
+    j.source     = j.source     || 'LinkedIn';
+    j.notes      = j.notes      || '';
+    j.salary     = j.salary     || '';
+    j.checklist  = j.checklist  || {};
+    j.isDemo     = false;
+    existing.push(j);
+    existingUrls.add(url);
+    existingTC.add(tc);
+    added++;
+  });
+  if (added > 0) {
+    saveJobs(existing);
+    renderKanban();
+    updateStats();
+    renderAnalytics();
+    toast(`🔖 ${added} new job(s) added to tracker!`, 'success');
+  }
+}
+
+// Poll every 10 seconds (faster so jobs appear quickly after bookmarklet)
+setInterval(pollBookmarkletJobs, 10000);
+// Poll immediately on load
 pollBookmarkletJobs();
 
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
