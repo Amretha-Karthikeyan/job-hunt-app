@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
 import requests as http_requests
@@ -590,9 +590,23 @@ def bookmarklet_add():
         return resp, 500
 
 
+@app.route("/api/pending-count", methods=["GET"])
+def pending_count():
+    """Returns how many jobs are queued — does NOT clear the file"""
+    import json, os
+    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+    if not os.path.exists(jobs_file):
+        return jsonify({"count": 0})
+    try:
+        saved = json.load(open(jobs_file))
+        return jsonify({"count": len(saved)})
+    except:
+        return jsonify({"count": 0})
+
+
 @app.route("/api/bookmarklet-jobs", methods=["GET"])
 def bookmarklet_jobs():
-    """Frontend polls this to get jobs added via bookmarklet"""
+    """Frontend calls this to pull queued jobs — clears file after sending"""
     import json, os
     jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
     if not os.path.exists(jobs_file):
@@ -600,7 +614,6 @@ def bookmarklet_jobs():
     try:
         with open(jobs_file, "r") as f:
             saved = json.load(f)
-        # Clear the file after sending (jobs are now in frontend localStorage)
         with open(jobs_file, "w") as f:
             json.dump([], f)
         return jsonify({"jobs": saved})
@@ -825,7 +838,8 @@ def capture_bulk():
     with open(jobs_file, "w") as f:
         json.dump(existing, f)
 
-    return f"ok:{added}", 200
+    # Redirect back to the tracker — user lands there and clicks "Import Pending Jobs"
+    return redirect(f"/?imported={added}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

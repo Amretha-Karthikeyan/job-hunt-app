@@ -672,6 +672,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div class="card-title" style="margin-bottom:0;">📋 Application Kanban</div>
     <div class="flex-row">
       <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add New Job</button>
+      <button id="importPendingBtn" class="btn btn-sm" style="background:#fef3c7;color:#92400e;border:1.5px solid #fcd34d;display:none;" onclick="importPendingJobs()">📥 Import Pending Jobs <span id="pendingCount" style="background:#92400e;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;">0</span></button>
       <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #bbf7d0;" onclick="openImportModal()">🔗 Import from URL</button>
       <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;" onclick="openRankModal()">🏆 AI Rank My Jobs</button>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
@@ -2368,7 +2369,7 @@ function copyBookmarklet() {
         + 'return null;'
       + '}'
 
-      // Scroll + paginate
+      // Scroll + paginate through all pages
       + 'var allSeen={};var allJobs=[];var page=1;'
       + 'while(true){'
         + 'msg.textContent="Page "+page+": loading...";'
@@ -2379,43 +2380,48 @@ function copyBookmarklet() {
         + 'bar.style.width=Math.min(90,page*10)+"%";'
         + 'var nb=getNextBtn();'
         + 'if(!nb){msg.textContent="Done!";break;}'
-        + 'msg.textContent="Page "+page+" ("+allJobs.length+" total) — next page...";'
+        + 'msg.textContent="Page "+page+" ("+allJobs.length+" total) — going to next...";'
         + 'nb.click();'
         + 'await new Promise(function(r){setTimeout(r,2500);});'
         + 'window.scrollTo(0,0);'
         + 'await new Promise(function(r){setTimeout(r,1000);});'
         + 'page++;if(page>25)break;'
       + '}'
-
       + 'bar.style.width="100%";ov.remove();'
-      + 'if(!allJobs.length){alert("No jobs found.\\n\\nMake sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/");return;}'
-      + 'if(!confirm("Found "+allJobs.length+" job(s) across "+page+" page(s)!\\nClick OK to open your Job Tracker and import them."))return;'
 
-      // ── KEY FIX: redirect to tracker with jobs encoded in URL hash ──
-      // No cross-origin request needed — jobs travel in the URL itself
-      + 'var encoded=encodeURIComponent(JSON.stringify(allJobs));'
-      // Split into chunks if too long (URL limit ~50k chars should be fine for 200 jobs)
-      + 'window.open("' + appUrl + '/?import=1#jobs="+encoded,"_blank");'
+      + 'if(!allJobs.length){alert("No jobs found. Make sure you are on:\\nhttps://www.linkedin.com/my-items/saved-jobs/");return;}'
+      + 'if(!confirm("Found "+allJobs.length+" job(s) across "+page+" page(s)!\\n\\nClick OK — your Job Tracker will open with them ready to import."))return;'
+
+      // ── Plain form POST to /capture-bulk — server saves jobs, redirects to tracker ──
+      // This is the ONLY method that works from LinkedIn (no CSP violation)
+      + 'var f=document.createElement("form");'
+      + 'f.method="POST";'
+      + 'f.action="' + appUrl + '/capture-bulk";'
+      + 'var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(allJobs);'
+      + 'f.appendChild(inp);document.body.appendChild(f);f.submit();'
       + 'return;'
     + '}'
 
-    // ── SINGLE MODE ───────────────────────────────────────────────
+    // ── SINGLE MODE — individual job listing ──────────────────────
     + 'var t="",c="",l="Singapore",jd="";'
     + 'var pt=document.title.replace(/\\s*[|]\\s*LinkedIn.*/i,"").replace(/\\s*-\\s*LinkedIn.*/i,"").trim();'
     + 'var ai=pt.lastIndexOf(" at ");'
     + 'if(ai>-1){t=pt.substring(0,ai).trim();c=pt.substring(ai+4).trim();}else{t=pt.trim();}'
     + 'var ts=["h1[class*=job-title]","h1[class*=title]","[class*=job-details-jobs-unified-top-card__job-title] h1",".top-card-layout__title","h1.t-24","h1.t-bold","h1"];'
     + 'for(var i=0;i<ts.length;i++){var el=document.querySelector(ts[i]);if(el&&el.innerText.trim().length>2){t=el.innerText.trim();break;}}'
-    + 'var cs=["[class*=job-details-jobs-unified-top-card__company-name] a","[class*=job-details-jobs-unified-top-card__company-name]",".topcard__org-name-link","[class*=company-name] a","[class*=company-name]","[class*=employer-name]"];'
+    + 'var cs=["[class*=job-details-jobs-unified-top-card__company-name] a","[class*=job-details-jobs-unified-top-card__company-name]",".topcard__org-name-link","[class*=company-name] a","[class*=company-name]"];'
     + 'for(var i=0;i<cs.length;i++){var el=document.querySelector(cs[i]);if(el&&el.innerText.trim().length>2){c=el.innerText.trim();break;}}'
-    + 'var ls=["[class*=job-details-jobs-unified-top-card__bullet]","[class*=workplace-type]","[class*=job-insight]"];'
+    + 'var ls=["[class*=job-details-jobs-unified-top-card__bullet]","[class*=workplace-type]"];'
     + 'for(var i=0;i<ls.length;i++){var el=document.querySelector(ls[i]);if(el&&el.innerText.trim().length>2){l=el.innerText.trim();break;}}'
-    + 'var ds=["[class*=jobs-description__content]","[class*=jobs-box__html-content]","[class*=description__content]","[class*=description]"];'
+    + 'var ds=["[class*=jobs-description__content]","[class*=description__content]","[class*=description]"];'
     + 'for(var i=0;i<ds.length;i++){var el=document.querySelector(ds[i]);if(el&&el.innerText.trim().length>50){jd=el.innerText.trim().substring(0,4000);break;}}'
     + 'if(!t||t.length<2){alert("Could not detect job title. Wait for the page to fully load.");return;}'
     + 'if(!confirm("Add to Job Tracker?\\n\\nRole: "+t+"\\nCompany: "+(c||"Unknown")+"\\n"+(jd?"\\u2705 JD captured":"\\u26a0\\ufe0f No JD found")))return;'
-    + 'var encoded=encodeURIComponent(JSON.stringify([{role:t,company:c||"Unknown",location:l,url:u.split("?")[0],jd:jd,status:"saved",source:"LinkedIn",priority:"Medium",roleType:"Business Analyst",dateApplied:new Date().toISOString(),notes:"",salary:"",checklist:{}}]));'
-    + 'window.open("' + appUrl + '/?import=1#jobs="+encoded,"_blank");'
+    + 'var f=document.createElement("form");'
+    + 'f.method="POST";f.action="' + appUrl + '/capture-bulk";'
+    + 'var single=[{role:t,company:c||"Unknown",location:l,url:u.split("?")[0],jd:jd,status:"saved",source:"LinkedIn",priority:"Medium",roleType:"Business Analyst",dateApplied:new Date().toISOString(),notes:"",salary:"",checklist:{}}];'
+    + 'var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(single);'
+    + 'f.appendChild(inp);document.body.appendChild(f);f.submit();'
   + '}())';
 
   var box = document.getElementById('bookmarkletBox');
@@ -2475,29 +2481,64 @@ function mergeBookmarkletJobs(incoming) {
   }
 }
 
-// Poll every 10 seconds (faster so jobs appear quickly after bookmarklet)
-setInterval(pollBookmarkletJobs, 10000);
-// Poll immediately on load
-pollBookmarkletJobs();
-
-// ── URL HASH IMPORT — reads jobs passed via bookmarklet URL hash ──
-function checkHashImport() {
+// ── CHECK PENDING COUNT — shows Import button if server has queued jobs ──
+async function checkPendingCount() {
   try {
-    const hash = window.location.hash;
-    if (!hash.startsWith('#jobs=')) return;
-    const raw = decodeURIComponent(hash.slice(6));
-    const incoming = JSON.parse(raw);
-    if (!incoming || !incoming.length) return;
-    // Clear hash from URL without reload
-    history.replaceState(null, '', window.location.pathname);
-    // Merge with dedup
-    mergeBookmarkletJobs(incoming);
+    const res = await fetch('/api/pending-count');
+    const data = await res.json();
+    const btn = document.getElementById('importPendingBtn');
+    const badge = document.getElementById('pendingCount');
+    if (data.count > 0) {
+      badge.textContent = data.count;
+      btn.style.display = 'inline-flex';
+      btn.style.alignItems = 'center';
+    } else {
+      btn.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+// ── IMPORT PENDING JOBS — manually triggered by button click ──
+async function importPendingJobs() {
+  const btn = document.getElementById('importPendingBtn');
+  btn.textContent = '⏳ Importing...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/bookmarklet-jobs');
+    const data = await res.json();
+    if (!data.jobs || data.jobs.length === 0) {
+      toast('No pending jobs found', 'info');
+      btn.style.display = 'none';
+      return;
+    }
+    mergeBookmarkletJobs(data.jobs);
+    btn.style.display = 'none';
   } catch(e) {
-    console.error('Hash import error:', e);
+    toast('Import failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
-// Run on load
-checkHashImport();
+
+// Check for pending jobs on load and every 15 seconds
+checkPendingCount();
+setInterval(checkPendingCount, 15000);
+
+// Also check if redirected from bookmarklet (imported=N in URL)
+if (window.location.search.includes('imported=')) {
+  // Show a banner to click the import button
+  setTimeout(() => {
+    const count = new URLSearchParams(window.location.search).get('imported');
+    if (parseInt(count) > 0) {
+      toast('🎯 ' + count + ' jobs saved! Click the yellow "Import Pending Jobs" button to load them.', 'success');
+      document.getElementById('importPendingBtn').style.display = 'inline-flex';
+      document.getElementById('importPendingBtn').style.alignItems = 'center';
+      document.getElementById('pendingCount').textContent = count;
+    }
+    // Clean URL
+    history.replaceState(null, '', '/');
+  }, 800);
+}
 
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
 </script>
