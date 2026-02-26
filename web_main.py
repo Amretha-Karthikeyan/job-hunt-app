@@ -531,6 +531,81 @@ Return ONLY the JSON array, no other text."""
         return jsonify({"error": f"Could not parse AI response: {str(e)}", "raw": result}), 500
 
 
+@app.route("/api/fetch-jd", methods=["POST"])
+def fetch_jd():
+    """Fetch job description from a LinkedIn or Indeed URL via HTTP scraping."""
+    import requests as req
+    from bs4 import BeautifulSoup
+
+    data = request.json
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        resp = req.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        jd = ""
+        title = ""
+        company = ""
+
+        if "linkedin.com" in url:
+            # LinkedIn job description selectors
+            for sel in [
+                ".description__text",
+                ".show-more-less-html__markup",
+                "[class*='description']",
+                "section.description",
+            ]:
+                el = soup.select_one(sel)
+                if el and len(el.get_text(strip=True)) > 100:
+                    jd = el.get_text(separator="\n", strip=True)[:5000]
+                    break
+
+            title_el = soup.select_one("h1.top-card-layout__title, h1[class*='title']")
+            if title_el:
+                title = title_el.get_text(strip=True)
+
+            company_el = soup.select_one("a.topcard__org-name-link, [class*='company-name']")
+            if company_el:
+                company = company_el.get_text(strip=True)
+
+        elif "indeed.com" in url:
+            for sel in ["#jobDescriptionText", ".jobsearch-jobDescriptionText", "[class*='description']"]:
+                el = soup.select_one(sel)
+                if el and len(el.get_text(strip=True)) > 100:
+                    jd = el.get_text(separator="\n", strip=True)[:5000]
+                    break
+
+        elif "mycareersfuture.gov.sg" in url:
+            for sel in ["[class*='job-description']", "[class*='description']", "article"]:
+                el = soup.select_one(sel)
+                if el and len(el.get_text(strip=True)) > 100:
+                    jd = el.get_text(separator="\n", strip=True)[:5000]
+                    break
+        else:
+            # Generic fallback
+            for tag in soup.find_all(["article", "section", "div"], limit=20):
+                text = tag.get_text(strip=True)
+                if len(text) > 500 and any(kw in text.lower() for kw in ["responsibilities", "requirements", "qualifications", "experience"]):
+                    jd = text[:5000]
+                    break
+
+        if not jd:
+            return jsonify({"jd": "", "error": "Could not extract JD — LinkedIn may require login"}), 200
+
+        return jsonify({"jd": jd, "title": title, "company": company})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/bookmarklet-add", methods=["POST", "OPTIONS"])
 def bookmarklet_add():
     # Handle CORS preflight - bookmarklet calls come from linkedin.com/indeed.com

@@ -1787,6 +1787,8 @@ function renderRow(j) {
     <div class="job-row-actions">
       ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-xs btn-primary" style="text-decoration:none;">🔗</a>` : ''}
       <button class="btn btn-xs btn-secondary" onclick="openJobDetail('${j.id}')" title="View details">👁</button>
+      ${j.url && !j.jd ? `<button class="btn btn-xs" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" onclick="fetchJDForJob('${j.id}')" title="Fetch job description">📥 JD</button>` : ''}
+      <button class="btn btn-xs" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="tailorForJob('${j.id}')" title="Tailor resume & cover letter">✨ Tailor</button>
       <button class="btn btn-xs btn-secondary" onclick="openApplyKitForJob('${j.id}')" title="Generate kit">⚡</button>
       <button class="btn btn-xs btn-ghost" onclick="openChecklist('${j.id}')" title="Checklist">☑</button>
       ${moveButtons}
@@ -1799,6 +1801,65 @@ function moveJob(id, newCol) {
   const jobs = getJobs();
   const j = jobs.find(j => j.id === id);
   if (j) { j.status = newCol; saveJobs(jobs); renderKanban(); updateStats(); toast(`Moved to ${COL_LABELS[newCol].replace(/[^\w\s]/g,"").trim()}`, "success"); }
+}
+
+// ─── FETCH JD FOR A BOOKMARKLET JOB ────────────────────────
+async function fetchJDForJob(id) {
+  const jobs = getJobs();
+  const j = jobs.find(j => j.id === id);
+  if (!j || !j.url) return;
+
+  toast('Fetching JD from LinkedIn...', '');
+  try {
+    const data = await callBackend('/api/fetch-jd', { url: j.url });
+    if (data.jd && data.jd.length > 50) {
+      j.jd = data.jd;
+      if (data.title && !j.role) j.role = data.title;
+      if (data.company && j.company === 'Unknown') j.company = data.company;
+      saveJobs(jobs);
+      renderKanban();
+      toast('✅ JD fetched! You can now run AI Ranking.', 'success');
+    } else {
+      toast('⚠️ Could not extract JD — try opening the job link and pasting manually.', 'error');
+    }
+  } catch(e) {
+    toast('Failed to fetch JD: ' + e.message, 'error');
+  }
+}
+
+// ─── TAILOR RESUME FOR A SPECIFIC JOB ──────────────────────
+function tailorForJob(id) {
+  const jobs = getJobs();
+  const j = jobs.find(j => j.id === id);
+  if (!j) return;
+
+  // Switch to Resume Tailorer tab
+  const tab1btn = document.querySelector('.tab-btn');
+  switchTab('tab1', tab1btn);
+
+  // Pre-fill the JD and role type
+  const jdBox = document.getElementById('t1JD');
+  const roleSelect = document.getElementById('t1RoleType');
+
+  if (j.jd) {
+    jdBox.value = j.jd;
+  } else if (j.url) {
+    jdBox.value = '';
+    jdBox.placeholder = `No JD yet for this job. Click "📥 JD" on the row first, or paste the JD here.\n\nJob: ${j.role} at ${j.company}\nURL: ${j.url}`;
+  }
+
+  if (j.roleType && roleSelect) {
+    // Try to match to existing option
+    const opts = Array.from(roleSelect.options).map(o => o.value);
+    const match = opts.find(o => o.toLowerCase() === (j.roleType||'').toLowerCase());
+    if (match) roleSelect.value = match;
+  }
+
+  // Show toast with job context
+  toast(`✨ Ready to tailor for: ${j.role} at ${j.company}`, 'success');
+
+  // Scroll to top
+  window.scrollTo(0, 0);
 }
 
 function deleteJob(id) {
