@@ -1133,6 +1133,9 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       ⚠️ No apply link saved for this job. Add one by editing the card.
     </div>
 
+    <!-- AI Reason -->
+    <div id="jdModalAIReason" style="display:none;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#166534;margin-bottom:14px;line-height:1.6;"></div>
+
     <!-- JD section -->
     <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Job Description</div>
     <div id="jdModalJD"
@@ -1792,15 +1795,22 @@ function renderRow(j) {
 
   // AI score display
   const hasScore = j.aiScore != null;
-  const scoreLabel = hasScore
+  const scoreEmoji = hasScore
     ? (j.aiScore >= 8 ? '🔥' : j.aiScore >= 6 ? '✅' : j.aiScore >= 4 ? '🟡' : '❌')
-    : (j.jd ? '—' : '');
+    : '';
   const scoreBg = hasScore
     ? (j.aiScore >= 8 ? '#fef3c7' : j.aiScore >= 6 ? '#f0fdf4' : j.aiScore >= 4 ? '#fffbeb' : '#fff1f2')
     : 'transparent';
+  const scoreBorder = hasScore
+    ? (j.aiScore >= 8 ? '#fde68a' : j.aiScore >= 6 ? '#bbf7d0' : j.aiScore >= 4 ? '#fed7aa' : '#fecdd3')
+    : 'transparent';
+  const reasonTip = j.aiReason ? j.aiReason.replace(/"/g,"'") : '';
   const scoreText = hasScore
-    ? `<span style="background:${scoreBg};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${scoreLabel} ${j.aiScore}/10</span>`
-    : `<span style="color:var(--gray-300);font-size:12px;">${j.jd ? 'Run rank →' : 'No JD'}</span>`;
+    ? `<div title="${reasonTip}" style="cursor:help;">
+        <span style="background:${scoreBg};border:1.5px solid ${scoreBorder};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${scoreEmoji} ${j.aiScore}/10</span>
+        ${j.aiPriority ? `<div style="font-size:10px;color:var(--gray-400);margin-top:2px;">${j.aiPriority}</div>` : ''}
+       </div>`
+    : `<span style="color:var(--gray-300);font-size:11px;">${j.jd ? '▶ Run Rank' : 'No JD yet'}</span>`;
 
   // JD indicator
   const jdStatus = j.jd
@@ -1945,11 +1955,25 @@ function openJobDetail(id) {
   // Badges
   const badgeColors = { High:"#fee2e2;color:#991b1b", Medium:"#fef3c7;color:#92400e", Low:"#f0fdf4;color:#166534" };
   const bc = badgeColors[j.priority] || "var(--gray-100);color:var(--gray-600)";
+  const aiScoreBadge = j.aiScore != null
+    ? `<span style="background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.aiScore >= 8 ? '🔥' : j.aiScore >= 6 ? '✅' : j.aiScore >= 4 ? '🟡' : '❌'} ${j.aiScore}/10 fit</span>`
+    : '';
   document.getElementById("jdModalBadges").innerHTML = `
-    <span style="background:${bc.split(";")[0]};color:${bc.split(";")[1]?.replace("color:","")};padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.priority || "—"}</span>
+    ${aiScoreBadge}
     ${j.status ? `<span style="background:var(--blue-pale);color:var(--blue);padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.status}</span>` : ""}
     ${j.salary ? `<span style="background:#f0fdf4;color:#166534;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">S$${j.salary}</span>` : ""}
-    ${j.source ? `<span style="background:var(--gray-100);color:var(--gray-600);padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600;">${j.source}</span>` : ""}`;
+    ${j.aiPriority ? `<span style="background:#f0f9ff;color:#0369a1;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600;">⏰ ${j.aiPriority}</span>` : ""}`;
+
+  // Show AI reason if available
+  const aiReasonEl = document.getElementById("jdModalAIReason");
+  if (aiReasonEl) {
+    if (j.aiReason) {
+      aiReasonEl.textContent = j.aiReason;
+      aiReasonEl.style.display = "block";
+    } else {
+      aiReasonEl.style.display = "none";
+    }
+  }
 
   // Apply URL
   if (j.url) {
@@ -2492,6 +2516,25 @@ renderReferrals();
 
 // Check for bookmarklet data in URL hash (must run after renderKanban is ready)
 checkHashImport();
+
+// Auto-rank jobs that have JDs but haven't been scored yet
+setTimeout(async () => {
+  const allJobs = getJobs().filter(j => !j.isDemo && j.jd && j.aiScore == null);
+  if (allJobs.length === 0) return;
+  try {
+    const payload = allJobs.map(j => ({ id: j.id, role: j.role, company: j.company, roleType: j.roleType || '', jd: j.jd }));
+    const data = await callBackend('/api/rank-jobs', { jobs: payload });
+    if (!data.rankings) return;
+    const jobs = getJobs();
+    data.rankings.forEach(r => {
+      const job = jobs.find(j => String(j.id) === String(r.id));
+      if (job) { job.aiScore = r.score; job.aiLabel = r.label; job.aiReason = r.reason; job.aiPriority = r.priority; }
+    });
+    saveJobs(jobs);
+    renderKanban();
+    toast(`🏆 AI scored ${data.rankings.length} jobs`, 'success');
+  } catch(e) { /* silent */ }
+}, 3000);
 
 // Set daily goal from storage
 const savedGoal = localStorage.getItem("dailyGoalTarget");
