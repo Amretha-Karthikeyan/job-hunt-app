@@ -344,7 +344,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .stage-rows { border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); overflow: hidden; }
 .job-row {
   display: grid;
-  grid-template-columns: 2fr 2fr 80px 80px 80px 110px auto;
+  grid-template-columns: 2fr 2fr 90px 110px auto;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
@@ -378,7 +378,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 /* Table header row */
 .job-list-header {
   display: grid;
-  grid-template-columns: 2fr 2fr 80px 80px 80px 110px auto;
+  grid-template-columns: 2fr 2fr 90px 110px auto;
   gap: 12px;
   padding: 8px 14px;
   background: var(--gray-50);
@@ -929,6 +929,12 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       <div style="margin-top:8px;font-size:12px;color:var(--gray-400);">This may take 15–30 seconds for large lists</div>
     </div>
 
+    <div id="rankFetchPrompt" style="display:none;margin-bottom:16px;padding:12px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:8px;font-size:13px;">
+      <strong>⚠️ Some jobs are missing JDs</strong> — AI ranking works best with job descriptions. 
+      <button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;margin-left:8px;" onclick="fetchMissingJDs();closeModal('rankModal');">📥 Fetch All JDs first</button>
+      <span style="margin-left:8px;color:var(--gray-400);">or rank with what's available →</span>
+    </div>
+
     <div id="rankResults" style="display:none;">
       <div id="rankSummary" style="margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px;font-size:13px;color:var(--gray-500);"></div>
       <div id="rankList"></div>
@@ -1279,12 +1285,19 @@ async function openRankModal() {
   document.getElementById('rankResults').style.display = 'none';
   document.getElementById('rankEmpty').style.display = 'none';
   document.getElementById('rankError').style.display = 'none';
+  document.getElementById('rankFetchPrompt').style.display = 'none';
   openModal('rankModal');
 
   const realJobs = jobs.filter(j => !j.isDemo);
   if (realJobs.length === 0) {
     document.getElementById('rankEmpty').style.display = 'block';
     return;
+  }
+
+  // Show warning if many jobs lack JDs
+  const missingJD = realJobs.filter(j => !j.jd).length;
+  if (missingJD > 0) {
+    document.getElementById('rankFetchPrompt').style.display = 'block';
   }
 
   document.getElementById('rankLoading').style.display = 'block';
@@ -1311,6 +1324,20 @@ async function openRankModal() {
 
     // Sort rankings by score descending
     const rankings = data.rankings.sort((a, b) => b.score - a.score);
+
+    // Save scores back to job objects in localStorage
+    const allJobs = getJobs();
+    rankings.forEach(r => {
+      const job = allJobs.find(j => String(j.id) === String(r.id));
+      if (job) {
+        job.aiScore = r.score;
+        job.aiLabel = r.label;
+        job.aiReason = r.reason;
+        job.aiPriority = r.priority;
+      }
+    });
+    saveJobs(allJobs);
+    renderKanban();
 
     // Build lookup map
     const jobMap = {};
@@ -1367,9 +1394,9 @@ async function openRankModal() {
         <div style="font-size:13px;color:var(--gray-600);margin-bottom:8px;">${r.reason}</div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <span style="font-size:12px;font-weight:600;color:${priColor};">⏰ ${r.priority}</span>
-          <button onclick="closeModal('rankModal');switchTab('tab1',document.querySelector('.tab-btn'));document.getElementById('t1JD').value=${JSON.stringify(job.jd||'')};document.getElementById('t1RoleType').value=${JSON.stringify(job.roleType||'Business Analyst')};" 
-            style="font-size:12px;padding:4px 10px;background:white;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;color:var(--blue);">
-            ✨ Tailor Resume →
+          <button onclick="closeModal('rankModal');openApplyKitForJob('${job.id}');"
+            style="font-size:12px;padding:4px 10px;background:white;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;color:#7c3aed;">
+            ⚡ Generate Kit →
           </button>
         </div>
       </div>`;
@@ -1726,9 +1753,7 @@ function renderKanban() {
         <div class="job-list-header">
           <div>Company</div>
           <div>Role</div>
-          <div>Priority</div>
-          <div>Days</div>
-          <div>Source</div>
+          <div>AI Score</div>
           <div>Salary</div>
           <div>Actions</div>
         </div>
@@ -1754,43 +1779,50 @@ function toggleStage(col) {
 }
 
 function renderRow(j) {
-  j.priority    = j.priority    || 'Medium';
   j.roleType    = j.roleType    || '';
   j.source      = j.source      || 'LinkedIn';
   j.dateApplied = j.dateApplied || new Date().toISOString();
-  const days = daysSince(j.dateApplied);
-  const needsFollowup = j.status === "applied" && days >= 7;
   const rowClass = j.isDemo ? "job-row demo-row" : "job-row";
 
   const moveButtons = `
-    <select class="form-control" style="padding:3px 6px;font-size:11px;height:26px;min-width:90px;display:inline-block;width:auto;" 
+    <select class="form-control" style="padding:3px 6px;font-size:11px;height:26px;min-width:90px;display:inline-block;width:auto;"
       onchange="moveJob('${j.id}', this.value); this.value='${j.status}';">
       ${COLS.map(c => `<option value="${c}" ${c === j.status ? 'selected' : ''}>${COL_LABELS[c].replace(/[^\w\s]/g,'').trim()}</option>`).join('')}
     </select>`;
+
+  // AI score display
+  const hasScore = j.aiScore != null;
+  const scoreLabel = hasScore
+    ? (j.aiScore >= 8 ? '🔥' : j.aiScore >= 6 ? '✅' : j.aiScore >= 4 ? '🟡' : '❌')
+    : (j.jd ? '—' : '');
+  const scoreBg = hasScore
+    ? (j.aiScore >= 8 ? '#fef3c7' : j.aiScore >= 6 ? '#f0fdf4' : j.aiScore >= 4 ? '#fffbeb' : '#fff1f2')
+    : 'transparent';
+  const scoreText = hasScore
+    ? `<span style="background:${scoreBg};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${scoreLabel} ${j.aiScore}/10</span>`
+    : `<span style="color:var(--gray-300);font-size:12px;">${j.jd ? 'Run rank →' : 'No JD'}</span>`;
+
+  // JD indicator
+  const jdStatus = j.jd
+    ? `<span style="font-size:10px;color:#15803d;">✅ JD</span>`
+    : (j.url ? `<span style="font-size:10px;color:#f59e0b;cursor:pointer;" onclick="fetchJDForJob('${j.id}')">⚡ Fetch JD</span>` : `<span style="font-size:10px;color:var(--gray-300);">No JD</span>`);
 
   return `<div class="${rowClass}" data-id="${j.id}">
     <div>
       <div class="job-row-company">${j.isDemo ? '⚠️ ' : ''}${j.company}</div>
       ${j.roleType ? `<div style="font-size:10px;color:var(--blue);font-weight:600;">${j.roleType}</div>` : ''}
+      <div style="margin-top:2px;">${jdStatus}</div>
     </div>
     <div>
       <div class="job-row-role">${j.role}</div>
       <div style="font-size:10px;color:var(--gray-400);margin-top:2px;">${sgDate(j.dateApplied)}</div>
     </div>
-    <div><span class="meta-badge badge-${(j.priority||'medium').toLowerCase()}">${j.priority}</span></div>
-    <div>
-      <span class="meta-badge badge-days">${days}d</span>
-      ${needsFollowup ? `<br><span class="meta-badge badge-followup" style="margin-top:3px;display:inline-block;">⏰ Follow up</span>` : ''}
-    </div>
-    <div style="font-size:12px;color:var(--gray-500);">${j.source}</div>
+    <div>${scoreText}</div>
     <div style="font-size:12px;color:var(--blue);">${j.salary ? 'S$'+j.salary : '<span style="color:var(--gray-300);">—</span>'}</div>
     <div class="job-row-actions">
       ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-xs btn-primary" style="text-decoration:none;">🔗</a>` : ''}
       <button class="btn btn-xs btn-secondary" onclick="openJobDetail('${j.id}')" title="View details">👁</button>
-      ${j.url && !j.jd ? `<button class="btn btn-xs" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" onclick="fetchJDForJob('${j.id}')" title="Fetch job description">📥 JD</button>` : ''}
-      <button class="btn btn-xs" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="tailorForJob('${j.id}')" title="Tailor resume & cover letter">✨ Tailor</button>
-      <button class="btn btn-xs btn-secondary" onclick="openApplyKitForJob('${j.id}')" title="Generate kit">⚡</button>
-      <button class="btn btn-xs btn-ghost" onclick="openChecklist('${j.id}')" title="Checklist">☑</button>
+      <button class="btn btn-xs" style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;" onclick="openApplyKitForJob('${j.id}')" title="Generate resume & cover letter">⚡ Kit</button>
       ${moveButtons}
       <button class="btn btn-xs btn-ghost" onclick="deleteJob('${j.id}')" title="Delete" style="color:var(--danger);">✕</button>
     </div>
@@ -1803,27 +1835,57 @@ function moveJob(id, newCol) {
   if (j) { j.status = newCol; saveJobs(jobs); renderKanban(); updateStats(); toast(`Moved to ${COL_LABELS[newCol].replace(/[^\w\s]/g,"").trim()}`, "success"); }
 }
 
-// ─── FETCH JD FOR A BOOKMARKLET JOB ────────────────────────
+// ─── FETCH JD FOR A SINGLE JOB ─────────────────────────────
 async function fetchJDForJob(id) {
   const jobs = getJobs();
   const j = jobs.find(j => j.id === id);
   if (!j || !j.url) return;
 
-  toast('Fetching JD from LinkedIn...', '');
+  toast('Fetching JD...', '');
   try {
     const data = await callBackend('/api/fetch-jd', { url: j.url });
     if (data.jd && data.jd.length > 50) {
       j.jd = data.jd;
-      if (data.title && !j.role) j.role = data.title;
-      if (data.company && j.company === 'Unknown') j.company = data.company;
+      if (data.title && (!j.role || j.role.length < 3)) j.role = data.title;
+      if (data.company && (!j.company || j.company === 'Unknown')) j.company = data.company;
       saveJobs(jobs);
       renderKanban();
-      toast('✅ JD fetched! You can now run AI Ranking.', 'success');
+      toast('✅ JD fetched!', 'success');
     } else {
-      toast('⚠️ Could not extract JD — try opening the job link and pasting manually.', 'error');
+      toast('⚠️ Could not auto-fetch — LinkedIn requires login. Open the job link and paste the JD manually via View Details.', 'error');
     }
   } catch(e) {
-    toast('Failed to fetch JD: ' + e.message, 'error');
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+// ─── BULK FETCH JDs FOR ALL JOBS MISSING THEM ──────────────
+async function fetchMissingJDs() {
+  const jobs = getJobs();
+  const missing = jobs.filter(j => !j.jd && j.url && !j.isDemo);
+  if (missing.length === 0) return;
+
+  toast(`Fetching JDs for ${missing.length} jobs in background...`, '');
+  let fetched = 0;
+  for (const j of missing) {
+    try {
+      const data = await callBackend('/api/fetch-jd', { url: j.url });
+      if (data.jd && data.jd.length > 50) {
+        j.jd = data.jd;
+        if (data.title && (!j.role || j.role.length < 3)) j.role = data.title;
+        if (data.company && (!j.company || j.company === 'Unknown')) j.company = data.company;
+        fetched++;
+      }
+    } catch(e) { /* silently skip */ }
+    // Small delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, 800));
+  }
+  if (fetched > 0) {
+    saveJobs(jobs);
+    renderKanban();
+    toast(`✅ Fetched JDs for ${fetched} jobs. Run AI Ranking now!`, 'success');
+  } else {
+    toast('⚠️ LinkedIn requires login to fetch JDs — paste them manually via 👁 View Details.', '');
   }
 }
 
@@ -2076,9 +2138,10 @@ async function openApplyKitForJob(jobId) {
   document.getElementById("applyKitContent").innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;"><span class="spinner spinner-blue" style="width:32px;height:32px;border-width:3px;"></span><div style="margin-top:12px;color:var(--gray-400);">Generating kit for '+j.company+'...</div></div>';
   document.getElementById("applyKitModal").style.display="flex";
   
-  const jd = j.notes || `${j.role} at ${j.company}`;
-  const resumePromise = callClaude(`Write an ATS-optimised resume for ${PROFILE.name} applying to ${j.role} at ${j.company}. Role type: ${j.roleType}. Use this candidate data: ${JSON.stringify({summary:PROFILE.summary,skills:PROFILE.skills,experience:PROFILE.experience,education:PROFILE.education,certification:PROFILE.certification})}. Context: ${jd}. Include all sections, be specific with metrics.`);
-  const coverPromise = callClaude(`Write a 300-word cover letter for ${PROFILE.name} applying to ${j.role} at ${j.company}. Highlight: 5% KPMG profit increase, 30 man-days saved, SAFe 6.0 certified. Professional and specific to ${j.company}.`);
+  const jd = j.jd || `${j.role} at ${j.company}`;
+  const jdContext = jd.length > 100 ? jd : `${j.role} position at ${j.company}. Role type: ${j.roleType || 'Business Analyst'}.`;
+  const resumePromise = callClaude(`Write an ATS-optimised resume for ${PROFILE.name} applying to ${j.role} at ${j.company}. Role type: ${j.roleType || 'Business Analyst'}. Use this candidate data: ${JSON.stringify({summary:PROFILE.summary,skills:PROFILE.skills,experience:PROFILE.experience,education:PROFILE.education,certification:PROFILE.certification})}. Job description context: ${jdContext.substring(0,2000)}. Include all sections with metrics.`);
+  const coverPromise = callClaude(`Write a compelling 300-word cover letter for ${PROFILE.name} applying to ${j.role} at ${j.company}. Job description: ${jdContext.substring(0,1000)}. Key highlights to mention: 5% KPMG project profitability increase, 30 man-days saved via automation, SAFe 6.0 PO certified, AI product (Claude Opus 4.6). Be specific to ${j.company} and the role. Professional tone.`);
   
   try {
     const [resume, cover] = await Promise.all([resumePromise, coverPromise]);
@@ -2573,7 +2636,9 @@ function mergeBookmarkletJobs(incoming) {
     renderKanban();
     updateStats();
     renderAnalytics();
-    toast(`🎉 ${added} job(s) imported from LinkedIn!`, 'success');
+    toast(`🎉 ${added} job(s) imported from LinkedIn! Fetching JDs in background...`, 'success');
+    // Auto-fetch JDs for all newly imported jobs that have URLs
+    setTimeout(() => fetchMissingJDs(), 1500);
   } else {
     toast('All jobs are already in your tracker — nothing new added.', '');
   }
