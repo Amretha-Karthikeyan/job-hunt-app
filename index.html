@@ -699,9 +699,10 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div class="flex-row">
       <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add New Job</button>
       <button class="btn btn-sm" style="background:#0ea5e9;color:white;border:none;" onclick="openImportModal()">📥 Import from LinkedIn</button>
-      <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;" onclick="openRankModal()">🏆 AI Rank My Jobs</button>
-      <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
-      <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;" onclick="confirmClearAll()">🗑 Clear All & Reset</button>
+      <button class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="openAgentPanel()">🤖 Run Agent</button>
+      <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;" onclick="openRankModal()">🏆 AI Rank</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;" onclick="confirmClearAll()">🗑 Clear All</button>
     </div>
   </div>
 
@@ -917,6 +918,88 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 <!-- ========== MODALS ========== -->
 
 <!-- AI Job Ranking Modal -->
+<!-- ── AGENT MODAL ────────────────────────────────────────── -->
+<div class="modal-overlay" id="agentModal" style="display:none;">
+  <div class="modal" style="max-width:620px;max-height:88vh;overflow-y:auto;">
+    <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;border-radius:12px 12px 0 0;">
+      <div style="font-size:18px;font-weight:700;">🤖 Job Agent</div>
+      <button class="modal-close" onclick="closeModal('agentModal')" style="color:white;opacity:.8;">✕</button>
+    </div>
+    <div style="padding:24px;">
+
+      <!-- Status cards -->
+      <div id="agentStatusCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+        <div style="background:#eff6ff;border-radius:8px;padding:12px;text-align:center;">
+          <div id="agStat_total" style="font-size:24px;font-weight:700;color:#1d4ed8;">—</div>
+          <div style="font-size:11px;color:#6b7280;">Total Jobs</div>
+        </div>
+        <div style="background:#fefce8;border-radius:8px;padding:12px;text-align:center;">
+          <div id="agStat_jd" style="font-size:24px;font-weight:700;color:#ca8a04;">—</div>
+          <div style="font-size:11px;color:#6b7280;">With JD</div>
+        </div>
+        <div style="background:#f0fdf4;border-radius:8px;padding:12px;text-align:center;">
+          <div id="agStat_scored" style="font-size:24px;font-weight:700;color:#16a34a;">—</div>
+          <div style="font-size:11px;color:#6b7280;">Scored</div>
+        </div>
+        <div style="background:#faf5ff;border-radius:8px;padding:12px;text-align:center;">
+          <div id="agStat_docs" style="font-size:24px;font-weight:700;color:#7c3aed;">—</div>
+          <div style="font-size:11px;color:#6b7280;">Docs Ready</div>
+        </div>
+      </div>
+
+      <!-- What agent does -->
+      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;font-size:13px;">
+        <div style="font-weight:700;margin-bottom:8px;">What the agent does autonomously:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div>1️⃣  <b>AI Score</b> every job with a JD — ranks 1–10, labels fit, flags consulting roles</div>
+          <div>2️⃣  <b>Generate Resume + Cover Letter</b> for all jobs scored ≥ 5 (right CV template auto-selected)</div>
+          <div>3️⃣  <b>Save everything to Supabase</b> — scores, docs, JDs — nothing gets lost</div>
+          <div>4️⃣  <b>Notify you</b> via Telegram + Email with top matches & download links</div>
+        </div>
+      </div>
+
+      <!-- Notification config -->
+      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:14px;margin-bottom:20px;font-size:12px;">
+        <div style="font-weight:700;margin-bottom:6px;">⚙️ Required environment variables in Render:</div>
+        <code style="display:block;background:#fff;padding:8px;border-radius:6px;font-size:11px;line-height:1.8;">
+          TELEGRAM_BOT_TOKEN = (from @BotFather)<br>
+          TELEGRAM_CHAT_ID   = (from @userinfobot)<br>
+          GMAIL_USER         = your@gmail.com<br>
+          GMAIL_APP_PASSWORD = (Gmail App Password, not regular password)<br>
+          AGENT_CRON_SECRET  = jobhunt2025
+        </code>
+        <button class="btn btn-sm btn-ghost" style="margin-top:8px;" onclick="testNotifications()">🔔 Test Notifications</button>
+        <span id="notifTestResult" style="font-size:11px;margin-left:8px;"></span>
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <button id="agentRunBtn" class="btn btn-primary" onclick="runAgent(false)" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;flex:1;">
+          🤖 Run Agent Now
+        </button>
+        <button class="btn btn-secondary" onclick="runAgent(true)" style="flex:1;">
+          🔄 Re-process All Jobs
+        </button>
+      </div>
+
+      <!-- Cron info -->
+      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:14px;font-size:12px;">
+        <div style="font-weight:700;margin-bottom:4px;">⏰ Daily Scheduled Run</div>
+        <div style="color:#374151;margin-bottom:6px;">Add this cron job in Render → your service → Cron Jobs:</div>
+        <code id="cronUrlDisplay" style="display:block;background:white;padding:6px 10px;border-radius:6px;font-size:11px;word-break:break-all;"></code>
+        <div style="color:#6b7280;margin-top:4px;">Schedule: <code>0 9 * * *</code> (runs daily at 9am UTC = 5pm SGT)</div>
+      </div>
+
+      <!-- Live log -->
+      <div id="agentLogWrap" style="display:none;margin-top:16px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px;">📋 Agent Log</div>
+        <div id="agentLog" style="background:#0f172a;color:#94a3b8;font-family:monospace;font-size:11px;padding:12px;border-radius:8px;max-height:180px;overflow-y:auto;line-height:1.6;"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="rankModal" style="display:none;">
   <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto;">
     <button class="modal-close" onclick="closeModal('rankModal')">✕</button>
@@ -2790,7 +2873,7 @@ function copyBookmarklet() {
           + 'var href=a.href.split("?")[0];if(seen[href])return;seen[href]=true;'
           + 'var lines=card.innerText.trim().split("\\n").map(function(l){return l.trim();}).filter(function(l){return l.length>1&&["Verified","Posted","applicant","ago"].every(function(x){return l.indexOf(x)===-1;});});'
           + 'var t=lines[0]||"",c=lines[1]||"Unknown";'
-          + 'var liMatch=href.match(/\\/jobs\\/view\\/(\\d+)/);var liId=liMatch?"li_"+liMatch[1]:"";'\
+          + 'var liMatch=href.match(/\/jobs\/view\/(\d+)/);var liId=liMatch?"li_"+liMatch[1]:"";'
           + 'if(t.length>2)jobs.push({role:t,company:c,url:href,linkedInId:liId,source:"LinkedIn",status:"saved",roleType:"Business Analyst",dateApplied:new Date().toISOString(),jd:""});'
         + '});return jobs;'
       + '}'
@@ -2830,7 +2913,7 @@ function copyBookmarklet() {
     + 'for(var i=0;i<ds.length;i++){var el=document.querySelector(ds[i]);if(el&&el.innerText.trim().length>50){jd=el.innerText.trim().substring(0,4000);break;}}'
     + 'if(!t||t.length<2){alert("Could not detect job title. Make sure the page is fully loaded.");return;}'
     + 'if(!confirm("Add to Job Tracker?\\nRole: "+t+"\\nCompany: "+(c||"Unknown")+"\\n"+(jd?"✅ JD captured ("+jd.length+" chars)":"⚠️ No JD found — open the job first")))return;'
-    + 'var cleanU=u.split("?")[0];var liM=cleanU.match(/\\/jobs\\/view\\/(\\d+)/);var liId=liM?"li_"+liM[1]:"";'\
+    + 'var cleanU=u.split("?")[0];var liM=cleanU.match(/\/jobs\/view\/(\d+)/);var liId=liM?"li_"+liM[1]:"";'
     + 'var single=[{role:t,company:c||"Unknown",url:cleanU,linkedInId:liId,jd:jd,source:"LinkedIn",status:"saved",roleType:"Business Analyst",dateApplied:new Date().toISOString()}];'
     + 'var enc=btoa(unescape(encodeURIComponent(JSON.stringify(single))));'
     + 'window.open("' + appUrl + '/#bm:"+enc,"_blank");'
@@ -2934,7 +3017,10 @@ async function mergeBookmarkletJobs(incoming) {
   updateDbStatusLine({ source: 'supabase' });
   toast(`🎉 ${added} new job(s) imported! ${incoming.length - added > 0 ? `(${incoming.length - added} duplicates skipped)` : ''}`, 'success');
 
-  // Auto-rank any that have JDs
+  // 🤖 Auto-trigger agent for newly imported jobs
+  setTimeout(() => triggerAgentAfterImport(newJobs), 1500);
+
+  // Also rank locally any that already have JDs (faster than waiting for agent)
   setTimeout(() => {
     const toRank = newJobs.filter(j => j.jd && j.jd.length > 50);
     if (toRank.length > 0) {
@@ -2956,6 +3042,104 @@ async function mergeBookmarkletJobs(incoming) {
 
 function checkPendingCount() {}
 async function importPendingJobs() {}
+
+// ─── AGENT ──────────────────────────────────────────────────
+
+async function openAgentPanel() {
+  document.getElementById('agentModal').style.display = 'flex';
+  const cronEl = document.getElementById('cronUrlDisplay');
+  if (cronEl) cronEl.textContent = `${window.location.origin}/api/agent/cron?secret=jobhunt2025`;
+  await refreshAgentStatus();
+}
+
+async function refreshAgentStatus() {
+  try {
+    const data = await fetch('/api/agent/status').then(r => r.json());
+    const set  = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+    set('agStat_total', data.total);
+    set('agStat_jd',    data.with_jd);
+    set('agStat_scored',data.scored);
+    set('agStat_docs',  data.with_docs);
+  } catch(e) {}
+}
+
+async function runAgent(forceAll = false) {
+  const btn    = document.getElementById('agentRunBtn');
+  const logWrap= document.getElementById('agentLogWrap');
+  const logEl  = document.getElementById('agentLog');
+  btn.disabled = true;
+  btn.textContent = '⏳ Agent running…';
+  logWrap.style.display = 'block';
+  logEl.textContent = '▶ Starting agent…\n';
+
+  const log = (msg) => { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; };
+
+  try {
+    const data = await fetch('/api/agent/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force_all: forceAll })
+    }).then(r => r.json());
+
+    if (data.status === 'nothing_to_do') {
+      log('✅ All jobs already processed — nothing to do!');
+      toast('✅ All jobs already up to date', 'success');
+      btn.disabled = false; btn.textContent = '🤖 Run Agent Now';
+      return;
+    }
+
+    log(`✅ Processing ${data.count} jobs in background`);
+    log('📬 Telegram + Email notification when complete');
+    log('⏳ Polling for progress…');
+    toast(`🤖 Agent running — ${data.count} jobs`, 'success');
+
+    let prev = 0;
+    const poll = setInterval(async () => {
+      const s = await fetch('/api/agent/status').then(r => r.json()).catch(() => ({}));
+      const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+      set('agStat_total', s.total); set('agStat_jd', s.with_jd);
+      set('agStat_scored', s.scored); set('agStat_docs', s.with_docs);
+      if ((s.scored || 0) !== prev) {
+        log(`  📊 ${s.scored}/${s.total} scored · ${s.with_docs} docs ready`);
+        prev = s.scored || 0;
+        const res = await loadJobsFromSupabase();
+        if (res.count > 0) { renderKanban(); updateStats(); updateDbStatusLine({ source: 'supabase' }); }
+      }
+    }, 10000);
+
+    setTimeout(() => {
+      clearInterval(poll);
+      log('⏱ Done polling — check Telegram/Email for full results');
+      btn.disabled = false; btn.textContent = '🤖 Run Agent Now';
+    }, 300000);
+    return;
+
+  } catch(e) {
+    log(`❌ Error: ${e.message}`);
+    toast('Agent error', 'error');
+  }
+  btn.disabled = false; btn.textContent = '🤖 Run Agent Now';
+}
+
+async function testNotifications() {
+  const el = document.getElementById('notifTestResult');
+  el.textContent = 'Sending…';
+  try {
+    const d = await fetch('/api/test-notifications', { method: 'POST' }).then(r => r.json());
+    el.textContent = `Telegram: ${d.telegram} · Email: ${d.email}`;
+  } catch(e) { el.textContent = 'Error — check Render logs'; }
+}
+
+async function triggerAgentAfterImport(newJobs) {
+  if (!newJobs || !newJobs.length) return;
+  try {
+    await fetch('/api/agent/run-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobs: newJobs })
+    });
+  } catch(e) {}
+}
 
 console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
 </script>

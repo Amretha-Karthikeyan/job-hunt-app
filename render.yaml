@@ -7,9 +7,39 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
-      - key: GROQ_API_KEY
+      - key: ANTHROPIC_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: AGENT_CRON_SECRET
+        value: "jobhunt2025"
+
+  - type: cron
+    name: job-agent-daily
+    runtime: python
+    schedule: "0 9 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: >
+      python -c "
+      import requests, os;
+      r = requests.post(
+        os.environ.get('RENDER_EXTERNAL_URL','http://localhost:5000') + '/api/agent/cron',
+        json={'secret': os.environ.get('AGENT_CRON_SECRET','jobhunt2025')}
+      );
+      print(r.json())
+      "
+    envVars:
+      - key: AGENT_CRON_SECRET
+        value: "jobhunt2025"
+      - key: RENDER_EXTERNAL_URL
         sync: false

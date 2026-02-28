@@ -1080,6 +1080,407 @@ def capture_bulk():
     # Redirect back to the tracker — user lands there and clicks "Import Pending Jobs"
     return redirect(f"/?imported={added}")
 
+
+# ═══════════════════════════════════════════════════════════════
+# AGENT SYSTEM
+# ═══════════════════════════════════════════════════════════════
+
+import threading
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import datetime
+
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
+GMAIL_USER         = os.environ.get("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
+AGENT_CRON_SECRET  = os.environ.get("AGENT_CRON_SECRET", "jobhunt2025")
+
+
+def send_telegram(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        http_requests.post(url, json={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def send_email(subject, html_body):
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = GMAIL_USER
+        msg["To"]      = GMAIL_USER
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
+
+
+def agent_process_job(job):
+    """Full agent pipeline for one job: score → generate docs → save."""
+    log     = []
+    job_id  = job.get("id")
+    role    = job.get("role", "Unknown")
+    company = job.get("company", "Unknown")
+    jd      = job.get("jd", "") or ""
+
+    log.append(f"Processing: {role} @ {company}")
+
+    # STEP 1: AI Score
+    if jd and len(jd) > 50 and job.get("aiScore") is None:
+        try:
+            prompt = f"""You are a career coach for Singapore's tech job market.
+
+CANDIDATE: Amretha Karthikeyan — Lead BA/Product Owner at KPMG Singapore, 5+ years,
+SAFe 6.0 certified, transitioning to in-house product roles (NOT consulting).
+
+SCORING RULES:
+- Score 1-10 based on fit
+- +2 for in-house product companies (Grab, Sea, Airwallex, Stripe, GovTech, startups)
+- -2 for consulting (KPMG, Deloitte, Accenture, Big4) — max 4/10 for consulting roles
+- Score 0 if JD says "no visa sponsorship"
+- Labels: 🔥 Strong Match (9-10), ✅ Good Fit (7-8), 🟡 Possible (5-6), ❌ Weak Fit (1-4)
+- Priority: Apply Today, Apply This Week, Lower Priority, Skip
+
+JOB:
+Title: {role}
+Company: {company}
+JD: {jd[:500]}
+
+Return ONLY valid JSON, no markdown:
+{{"score": 8, "label": "✅ Good Fit", "reason": "Two sentence reason.", "priority": "Apply This Week"}}"""
+
+            result = call_claude(prompt)
+            clean  = result.strip().strip("```json").strip("```").strip()
+            # Find JSON object in response
+            import re
+            m = re.search(r'\{.*\}', clean, re.DOTALL)
+            if m:
+                scored = json.loads(m.group())
+                job["aiScore"]    = scored.get("score")
+                job["aiLabel"]    = scored.get("label", "")
+                job["aiReason"]   = scored.get("reason", "")
+                job["aiPriority"] = scored.get("priority", "")
+                log.append(f"  Scored: {job['aiLabel']} ({job['aiScore']}/10)")
+        except Exception as e:
+            log.append(f"  Scoring failed: {e}")
+    elif job.get("aiScore") is not None:
+        log.append(f"  Already scored: {job.get('aiLabel')} ({job.get('aiScore')}/10)")
+    else:
+        log.append(f"  No JD — skipping score")
+
+    # STEP 2: Generate docs (score >= 5, no docs yet)
+    score = job.get("aiScore") or 0
+    if score >= 5 and not job.get("resume_docx_b64"):
+        try:
+            import subprocess, tempfile, base64 as b64mod
+            script_path = os.path.join(BASE_DIR, "gen_docs.js")
+            ai_role     = is_ai_role(jd, job.get("roleType", ""))
+            payload_str = json.dumps({
+                "role": role, "company": company,
+                "jd": jd[:3000], "roleType": job.get("roleType", "Business Analyst"),
+                "outputDir": tempfile.gettempdir(), "isAI": ai_role
+            })
+            res = subprocess.run(
+                ["node", script_path, payload_str],
+                capture_output=True, text=True, timeout=30
+            )
+            if res.returncode == 0:
+                out = json.loads(res.stdout.strip())
+                with open(out["resume"], "rb") as f:
+                    job["resume_docx_b64"]     = b64mod.b64encode(f.read()).decode()
+                with open(out["cover"], "rb") as f:
+                    job["cover_docx_b64"]      = b64mod.b64encode(f.read()).decode()
+                job["resume_variant"]          = out.get("variant", "BA")
+                job["resume_filename"]         = out.get("resume", "").split("/")[-1]
+                job["cover_filename"]          = out.get("cover", "").split("/")[-1]
+                job["resume_generated_at"]     = datetime.datetime.utcnow().isoformat()
+                log.append(f"  Docs generated ({job['resume_variant']} template)")
+            else:
+                log.append(f"  Doc gen failed: {res.stderr[:80]}")
+        except Exception as e:
+            log.append(f"  Doc gen error: {e}")
+    elif score < 5:
+        log.append(f"  Score {score}/10 — skipping docs")
+    else:
+        log.append(f"  Docs already exist")
+
+    # STEP 3: Save to Supabase
+    try:
+        sb = get_supabase()
+        if sb:
+            row = {
+                "id":                  str(job.get("id", "")),
+                "linkedInId":          job.get("linkedInId", ""),
+                "role":                role,
+                "company":             company,
+                "status":              job.get("status", "saved"),
+                "url":                 job.get("url", ""),
+                "jd":                  jd[:8000],
+                "roleType":            job.get("roleType", ""),
+                "source":              job.get("source", ""),
+                "salary":              job.get("salary", ""),
+                "dateApplied":         job.get("dateApplied", ""),
+                "aiScore":             job.get("aiScore"),
+                "aiLabel":             job.get("aiLabel", ""),
+                "aiReason":            job.get("aiReason", ""),
+                "aiPriority":          job.get("aiPriority", ""),
+                "notes":               job.get("notes", ""),
+                "resume_docx_b64":     (job.get("resume_docx_b64") or "")[:500000],
+                "cover_docx_b64":      (job.get("cover_docx_b64") or "")[:500000],
+                "resume_variant":      job.get("resume_variant", ""),
+                "resume_filename":     job.get("resume_filename", ""),
+                "cover_filename":      job.get("cover_filename", ""),
+                "resume_generated_at": job.get("resume_generated_at", ""),
+            }
+            sb.table("jobs").upsert(row, on_conflict="id").execute()
+            log.append(f"  Saved to Supabase")
+    except Exception as e:
+        log.append(f"  Supabase save failed: {e}")
+
+    return job, log
+
+
+def agent_run(jobs_to_process, trigger="manual"):
+    """Run agent pipeline over list of jobs, then notify."""
+    results  = []
+    all_logs = []
+    scored   = []
+    docs_gen = []
+
+    for job in jobs_to_process:
+        enriched, log = agent_process_job(job)
+        all_logs.extend(log)
+        results.append(enriched)
+        if enriched.get("aiScore") is not None:
+            scored.append(enriched)
+        if enriched.get("resume_docx_b64"):
+            docs_gen.append(enriched)
+
+    top_jobs = sorted(scored, key=lambda j: j.get("aiScore", 0), reverse=True)[:5]
+    summary  = {
+        "trigger":  trigger,
+        "total":    len(jobs_to_process),
+        "scored":   len(scored),
+        "docs":     len(docs_gen),
+        "top_jobs": top_jobs,
+        "logs":     all_logs,
+        "results":  results,
+    }
+    _send_agent_notifications(summary)
+    return summary
+
+
+def _send_agent_notifications(summary):
+    """Build Telegram + Email notifications from agent summary."""
+    top     = summary["top_jobs"]
+    labels  = {"import": "📥 Auto (import)", "cron": "⏰ Daily", "manual": "▶ Manual"}
+    trigger_label = labels.get(summary["trigger"], "▶ Run")
+    now_str = datetime.datetime.now().strftime("%d %b %Y %H:%M")
+
+    # Telegram
+    lines = [
+        f"<b>🤖 Job Agent — {trigger_label}</b>  <i>{now_str}</i>",
+        f"Processed <b>{summary['total']}</b> · Scored <b>{summary['scored']}</b> · Docs <b>{summary['docs']}</b>",
+        "",
+    ]
+    if top:
+        lines.append("<b>🏆 Top Matches:</b>")
+        for i, j in enumerate(top, 1):
+            docs_flag = " 📄" if j.get("resume_docx_b64") else ""
+            lines.append(
+                f"{i}. <b>{j.get('company')}</b> — {j.get('role')}\n"
+                f"   {j.get('aiLabel','')} {j.get('aiScore','?')}/10{docs_flag}\n"
+                f"   <i>{(j.get('aiReason') or '')[:100]}</i>"
+            )
+    lines.append("\n🔗 Open your tracker to download docs")
+    send_telegram("\n".join(lines))
+
+    # Email
+    rows_html = ""
+    for j in top:
+        has_docs = "✅ Ready" if j.get("resume_docx_b64") else "—"
+        rows_html += (
+            f"<tr>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>"
+            f"<a href='{j.get('url','#')}' style='font-weight:700;color:#1d4ed8;'>{j.get('company','')}</a><br>"
+            f"<span style='font-size:13px;color:#374151;'>{j.get('role','')}</span></td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;font-weight:700;'>{j.get('aiScore','?')}/10</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{j.get('aiLabel','')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;'>{j.get('aiReason','')}</td>"
+            f"<td style='padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;'>{has_docs}</td>"
+            f"</tr>"
+        )
+
+    html = f"""<html><body style="font-family:-apple-system,sans-serif;background:#f9fafb;padding:20px;">
+<div style="max-width:720px;margin:0 auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
+  <div style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);padding:28px 32px;color:white;">
+    <h1 style="margin:0;font-size:22px;">🤖 Job Agent Complete</h1>
+    <p style="margin:6px 0 0;opacity:.85;">{trigger_label} · {now_str}</p>
+  </div>
+  <div style="padding:24px 32px;">
+    <div style="display:flex;gap:16px;margin-bottom:24px;">
+      <div style="flex:1;background:#eff6ff;border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#1d4ed8;">{summary['total']}</div>
+        <div style="font-size:12px;color:#6b7280;">Processed</div>
+      </div>
+      <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#16a34a;">{summary['scored']}</div>
+        <div style="font-size:12px;color:#6b7280;">Scored</div>
+      </div>
+      <div style="flex:1;background:#faf5ff;border-radius:8px;padding:14px;text-align:center;">
+        <div style="font-size:28px;font-weight:700;color:#7c3aed;">{summary['docs']}</div>
+        <div style="font-size:12px;color:#6b7280;">Docs Ready</div>
+      </div>
+    </div>
+    {'<h2 style="font-size:16px;margin-bottom:12px;">🏆 Top Matches</h2><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f3f4f6;"><th style="padding:10px;text-align:left;font-size:12px;color:#6b7280;">JOB</th><th style="padding:10px;font-size:12px;color:#6b7280;">SCORE</th><th style="padding:10px;font-size:12px;color:#6b7280;">FIT</th><th style="padding:10px;font-size:12px;color:#6b7280;">REASON</th><th style="padding:10px;font-size:12px;color:#6b7280;">DOCS</th></tr></thead><tbody>' + rows_html + '</tbody></table>' if top else '<p style="color:#6b7280;">No scored jobs yet.</p>'}
+  </div>
+  <div style="background:#f3f4f6;padding:16px 32px;text-align:center;font-size:13px;color:#6b7280;">
+    Open your <a href="https://job-hunt-app.onrender.com" style="color:#1d4ed8;">Job Tracker</a> to download documents
+  </div>
+</div></body></html>"""
+
+    send_email(
+        subject=f"🤖 Agent: {summary['scored']} scored, {summary['docs']} docs ready — {datetime.datetime.now().strftime('%d %b')}",
+        html_body=html
+    )
+
+
+# ─── AGENT ROUTES ────────────────────────────────────────────
+
+@app.route("/api/agent/run", methods=["POST"])
+def agent_run_route():
+    """Manual Run Agent — processes all pending jobs in background."""
+    data      = request.json or {}
+    force_all = data.get("force_all", False)
+
+    sb = get_supabase()
+    if not sb:
+        return jsonify({"error": "Supabase not configured"}), 400
+    try:
+        res      = sb.table("jobs").select("*").execute()
+        all_jobs = res.data or []
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    if force_all:
+        to_run = [j for j in all_jobs if not j.get("isDemo")]
+    else:
+        to_run = [
+            j for j in all_jobs
+            if not j.get("isDemo") and (
+                (j.get("jd") and j.get("aiScore") is None) or
+                (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
+            )
+        ]
+
+    if not to_run:
+        return jsonify({"status": "nothing_to_do", "message": "All jobs already processed"})
+
+    def bg():
+        with app.app_context():
+            agent_run(to_run, trigger="manual")
+
+    threading.Thread(target=bg, daemon=True).start()
+    return jsonify({"status": "started", "count": len(to_run),
+                    "message": f"Agent processing {len(to_run)} jobs in background"})
+
+
+@app.route("/api/agent/run-import", methods=["POST"])
+def agent_run_import():
+    """Auto-triggered after bookmarklet import — processes new jobs immediately."""
+    data     = request.json or {}
+    new_jobs = data.get("jobs", [])
+    if not new_jobs:
+        return jsonify({"status": "nothing_to_do"})
+
+    def bg():
+        with app.app_context():
+            agent_run(new_jobs, trigger="import")
+
+    threading.Thread(target=bg, daemon=True).start()
+    return jsonify({"status": "started", "count": len(new_jobs)})
+
+
+@app.route("/api/agent/status", methods=["GET"])
+def agent_status():
+    """Return counts of processed vs pending jobs."""
+    sb = get_supabase()
+    if not sb:
+        return jsonify({"error": "Supabase not configured"}), 400
+    try:
+        res  = sb.table("jobs").select("id,aiScore,resume_docx_b64,jd").execute()
+        jobs = res.data or []
+        return jsonify({
+            "total":     len(jobs),
+            "with_jd":   sum(1 for j in jobs if (j.get("jd") or "").strip()),
+            "scored":    sum(1 for j in jobs if j.get("aiScore") is not None),
+            "with_docs": sum(1 for j in jobs if j.get("resume_docx_b64")),
+            "pending":   sum(1 for j in jobs if j.get("aiScore") is None),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/agent/cron", methods=["POST", "GET"])
+def agent_cron():
+    """Daily cron trigger — protected by secret."""
+    secret = request.args.get("secret") or (request.json or {}).get("secret", "")
+    if secret != AGENT_CRON_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    sb = get_supabase()
+    if not sb:
+        return jsonify({"error": "Supabase not configured"}), 400
+    try:
+        res  = sb.table("jobs").select("*").execute()
+        jobs = [j for j in (res.data or []) if not j.get("isDemo")]
+        to_run = [
+            j for j in jobs
+            if (j.get("jd") and j.get("aiScore") is None) or
+               (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
+        ]
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not to_run:
+        send_telegram("🤖 Daily run: all jobs up to date ✅")
+        return jsonify({"status": "nothing_to_do"})
+
+    def bg():
+        with app.app_context():
+            agent_run(to_run, trigger="cron")
+
+    threading.Thread(target=bg, daemon=True).start()
+    return jsonify({"status": "started", "count": len(to_run)})
+
+
+@app.route("/api/test-notifications", methods=["POST"])
+def test_notifications():
+    tg  = send_telegram("🤖 <b>Job Agent test</b> — Telegram connected ✅")
+    em  = send_email("🤖 Job Agent — Email test",
+                     "<h2>Email connected ✅</h2><p>Notifications working.</p>")
+    return jsonify({
+        "telegram": "✅ sent" if tg else "❌ not configured",
+        "email":    "✅ sent" if em else "❌ not configured"
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
