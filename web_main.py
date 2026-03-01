@@ -22,16 +22,22 @@ print(f"[BOOT] GROQ_API_KEY={'SET' if GROQ_API_KEY else 'MISSING'}")
 print(f"[BOOT] SUPABASE_URL={'SET' if SUPABASE_URL else 'MISSING'} ({SUPABASE_URL[:30]}...)" if SUPABASE_URL else "[BOOT] SUPABASE_URL=MISSING")
 print(f"[BOOT] SUPABASE_KEY={'SET' if SUPABASE_KEY else 'MISSING'}")
 
+_supabase_error = None
+
 def get_supabase():
+    global _supabase_error
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print(f"[Supabase] Not configured: URL={'SET' if SUPABASE_URL else 'EMPTY'}, KEY={'SET' if SUPABASE_KEY else 'EMPTY'}")
+        _supabase_error = f"Missing env: URL={'SET' if SUPABASE_URL else 'EMPTY'}, KEY={'SET' if SUPABASE_KEY else 'EMPTY'}"
+        print(f"[Supabase] {_supabase_error}")
         return None
     try:
         from supabase import create_client
         client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        _supabase_error = None
         return client
     except Exception as e:
-        print(f"[Supabase] create_client failed: {e}")
+        _supabase_error = f"create_client error: {type(e).__name__}: {e}"
+        print(f"[Supabase] {_supabase_error}")
         return None
 
 def call_claude(prompt):
@@ -864,7 +870,10 @@ def health_check():
         "groq_api_key": "SET" if GROQ_API_KEY else "MISSING",
         "supabase_url": "SET" if SUPABASE_URL else "MISSING",
         "supabase_key": "SET" if SUPABASE_KEY else "MISSING",
+        "supabase_key_length": len(SUPABASE_KEY) if SUPABASE_KEY else 0,
+        "supabase_key_prefix": (SUPABASE_KEY[:20] + "...") if SUPABASE_KEY else "empty",
         "supabase_status": sb_status,
+        "supabase_error": _supabase_error,
         "supabase_url_preview": (SUPABASE_URL[:40] + "...") if SUPABASE_URL else "empty"
     })
 
