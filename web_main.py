@@ -1848,6 +1848,76 @@ def linkedin_scrape_route():
     return jsonify({"status": "started", "message": "LinkedIn scrape running in background"})
 
 
+
+@app.route("/api/agent/full-run", methods=["POST"])
+def agent_full_run():
+    """
+    Button-triggered full pipeline:
+      1. Scrape LinkedIn saved jobs (if credentials set)
+      2. AI score all unscored jobs
+      3. Generate resume + cover letter for scored >= 5
+      4. Email results to amretha.ammu@gmail.com
+    """
+    def bg():
+        with app.app_context():
+            summary = {"scraped": 0, "skipped": 0, "scored": 0, "docs": 0, "error": None}
+
+            # ── Step 1: LinkedIn scrape ──
+            li_email = _get_linkedin_email()
+            li_pw    = _get_linkedin_password()
+            if li_email and li_pw:
+                print("[FullRun] Scraping LinkedIn...")
+                scraped_jobs, err = linkedin_scrape_saved_jobs()
+                if err:
+                    summary["error"] = err
+                    print(f"[FullRun] Scrape error: {err}")
+                    send_email("⚠️ Extract Latest Jobs — Scrape Failed", f"<h2>LinkedIn Scrape Error</h2><p>{err}</p>")
+                else:
+                    added, skipped, _ = linkedin_sync_to_supabase(scraped_jobs)
+                    summary["scraped"] = added
+                    summary["skipped"] = skipped
+                    print(f"[FullRun] Scraped: {added} new, {skipped} already in tracker")
+            else:
+                summary["error"] = "no_credentials"
+                print("[FullRun] No LinkedIn credentials — skipping scrape")
+                send_email(
+                    "⚠️ Extract Latest Jobs — No LinkedIn Credentials",
+                    "<h2>Setup Required</h2><p>Open the app → click <strong>Extract Latest Jobs</strong> → enter your LinkedIn email and password in the setup form → Save → try again.</p>"
+                )
+                return
+
+            # ── Step 2 + 3: Score + generate docs ──
+            sb = get_supabase()
+            if not sb:
+                return
+            try:
+                res  = sb.table("jobs").select("*").execute()
+                jobs = [j for j in (res.data or []) if not j.get("isDemo")]
+                to_run = [
+                    j for j in jobs
+                    if (j.get("jd") and j.get("aiScore") is None) or
+                       (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
+                ]
+                if to_run:
+                    agent_run(to_run, trigger="manual")
+                else:
+                    # Nothing new to score — still send summary email
+                    send_email(
+                        f"✅ Extract Latest Jobs — {summary['scraped']} new jobs added",
+                        f"""<html><body style="font-family:sans-serif;padding:20px;">
+                        <h2>🔍 LinkedIn Sync Complete</h2>
+                        <p><strong>{summary['scraped']}</strong> new jobs added to tracker</p>
+                        <p><strong>{summary['skipped']}</strong> jobs already in tracker (skipped)</p>
+                        <p>All jobs are already scored — no new scoring needed.</p>
+                        <p><a href="https://job-hunt-app-r7my.onrender.com">Open your tracker →</a></p>
+                        </body></html>"""
+                    )
+            except Exception as e:
+                print(f"[FullRun] Agent error: {e}")
+
+    threading.Thread(target=bg, daemon=True).start()
+    return jsonify({"status": "started"})
+
 @app.route("/api/agent/cron", methods=["POST", "GET"])
 def agent_cron():
     """Daily cron trigger — scrapes LinkedIn then runs AI agent pipeline."""
