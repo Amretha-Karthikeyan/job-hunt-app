@@ -2,7 +2,7 @@ services:
   - type: web
     name: job-hunt-app
     runtime: python
-    buildCommand: pip install -r requirements.txt && npm install
+    buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium && npm install
     startCommand: gunicorn wsgi:app
     envVars:
       - key: PYTHON_VERSION
@@ -13,22 +13,22 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false
       - key: GMAIL_USER
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
       - key: AGENT_CRON_SECRET
         value: "jobhunt2025"
+      - key: LINKEDIN_EMAIL
+        sync: false
+      - key: LINKEDIN_PASSWORD
+        sync: false
 
   - type: cron
     name: job-agent-daily
     runtime: python
     schedule: "0 9 * * *"
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
     startCommand: >
       python -c "
       import requests, os;
@@ -42,4 +42,8 @@ services:
       - key: AGENT_CRON_SECRET
         value: "jobhunt2025"
       - key: RENDER_EXTERNAL_URL
+        sync: false
+      - key: LINKEDIN_EMAIL
+        sync: false
+      - key: LINKEDIN_PASSWORD
         sync: false

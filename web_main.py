@@ -1438,36 +1438,375 @@ def agent_status():
         return jsonify({"error": str(e)}), 500
 
 
+
+# ─── LINKEDIN SCRAPER (Playwright) ──────────────────────────────────────────
+
+LINKEDIN_EMAIL    = os.environ.get("LINKEDIN_EMAIL", "")
+LINKEDIN_PASSWORD = os.environ.get("LINKEDIN_PASSWORD", "")
+
+def linkedin_scrape_saved_jobs():
+    """
+    Logs into LinkedIn with stored credentials using Playwright (headless Chromium).
+    Scrapes all saved jobs from /my-items/saved-jobs/ and returns list of job dicts.
+    Returns (jobs_list, error_message). On success error_message is None.
+    """
+    if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
+        return [], "LINKEDIN_EMAIL or LINKEDIN_PASSWORD env vars not set"
+
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    except ImportError:
+        return [], "Playwright not installed — run: pip install playwright && playwright install chromium"
+
+    jobs = []
+    error = None
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ]
+            )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 900},
+                locale="en-US",
+            )
+            page = context.new_page()
+
+            # ── Step 1: Login ──
+            print("[LinkedIn] Navigating to login page...")
+            page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
+            page.fill("#username", LINKEDIN_EMAIL)
+            page.fill("#password", LINKEDIN_PASSWORD)
+            page.click("button[type=submit]")
+
+            # Wait for redirect away from login page
+            try:
+                page.wait_for_url(lambda u: "linkedin.com/login" not in u and "checkpoint" not in u, timeout=20000)
+            except PWTimeout:
+                # Check if we hit a security checkpoint
+                if "checkpoint" in page.url or "challenge" in page.url:
+                    browser.close()
+                    return [], "LinkedIn security checkpoint triggered — try logging in manually once to clear it"
+                if "login" in page.url:
+                    browser.close()
+                    return [], "Login failed — check LINKEDIN_EMAIL and LINKEDIN_PASSWORD env vars"
+
+            print(f"[LinkedIn] Logged in — current URL: {page.url}")
+
+            # ── Step 2: Navigate to saved jobs ──
+            page.goto("https://www.linkedin.com/my-items/saved-jobs/", wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(3000)
+
+            # ── Step 3: Scroll and scrape all pages ──
+            seen_urls = set()
+            page_num  = 1
+
+            while page_num <= 30:
+                print(f"[LinkedIn] Scraping page {page_num}...")
+
+                # Scroll down to trigger lazy-loaded cards
+                for _ in range(8):
+                    page.evaluate("window.scrollBy(0, 600)")
+                    page.wait_for_timeout(350)
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(500)
+
+                # Scrape job cards — try multiple selector strategies
+                cards = page.query_selector_all("[data-chameleon-result-urn]")
+                if not cards:
+                    cards = page.query_selector_all("li.scaffold-layout__list-item, li[class*=jobs-saved-jobs__list-item], li[class*=job-card-container]")
+                if not cards:
+                    # Fallback: any li containing a jobs/view link
+                    all_li = page.query_selector_all("li")
+                    cards  = [li for li in all_li if li.query_selector("a[href*='/jobs/view/']")]
+
+                for card in cards:
+                    link_el = card.query_selector("a[href*='/jobs/view/']")
+                    if not link_el:
+                        continue
+                    href = (link_el.get_attribute("href") or "").split("?")[0].split("#")[0]
+                    if not href or href in seen_urls:
+                        continue
+                    seen_urls.add(href)
+
+                    # Extract title
+                    title = ""
+                    for sel in ["[class*=job-card-list__title]", "[class*=job-card__title]", "strong", "h3", "h4"]:
+                        el = card.query_selector(sel)
+                        if el:
+                            tx = (el.inner_text() or "").strip()
+                            if 2 < len(tx) < 200:
+                                title = tx
+                                break
+                    if not title:
+                        lines = [l.strip() for l in (card.inner_text() or "").split("\n") if 2 < len(l.strip()) < 150]
+                        title = lines[0] if lines else ""
+
+                    # Extract company
+                    company = "Unknown"
+                    for sel in ["[class*=job-card-container__primary-description]", "[class*=job-card-list__company-name]", "[class*=subtitle]", "[class*=company]"]:
+                        el = card.query_selector(sel)
+                        if el:
+                            cx = (el.inner_text() or "").strip()
+                            if 1 < len(cx) < 100 and cx != title:
+                                company = cx
+                                break
+
+                    li_match = __import__('re').search(r'/jobs/view/(\d+)', href)
+                    li_id    = f"li_{li_match.group(1)}" if li_match else ""
+
+                    if title:
+                        jobs.append({
+                            "role":        title,
+                            "company":     company,
+                            "url":         href,
+                            "linkedInId":  li_id,
+                            "source":      "LinkedIn",
+                            "status":      "saved",
+                            "roleType":    "Business Analyst",
+                            "dateApplied": __import__('datetime').datetime.now().isoformat(),
+                            "jd":          "",
+                        })
+
+                print(f"[LinkedIn] Page {page_num}: {len(jobs)} total jobs so far")
+
+                # Next page
+                next_btn = None
+                for sel in ["button.artdeco-pagination__button--next", "button[aria-label*='Next']", "button[aria-label*='next']"]:
+                    btn = page.query_selector(sel)
+                    if btn and not btn.get_attribute("disabled"):
+                        next_btn = btn
+                        break
+                if not next_btn:
+                    # Fallback: button with text "Next"
+                    for btn in page.query_selector_all("button, a[role=button]"):
+                        txt = (btn.inner_text() or btn.get_attribute("aria-label") or "").strip().lower()
+                        if txt in ("next", "next page") and not btn.get_attribute("disabled"):
+                            next_btn = btn
+                            break
+
+                if not next_btn:
+                    print("[LinkedIn] No next page button — done scraping")
+                    break
+
+                next_btn.click()
+                page.wait_for_timeout(2800)
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(800)
+                page_num += 1
+
+            # ── Step 4: Fetch job descriptions for each job ──
+            print(f"[LinkedIn] Fetching JDs for {len(jobs)} jobs...")
+            for i, job in enumerate(jobs):
+                try:
+                    print(f"[LinkedIn] JD {i+1}/{len(jobs)}: {job['company']}")
+                    page.goto(job["url"], wait_until="domcontentloaded", timeout=20000)
+                    page.wait_for_timeout(2000)
+
+                    jd_text = ""
+                    for sel in ["#job-details", "[class*=jobs-description__content]", "[class*=description__content]", "[class*=jobs-box__html-content]"]:
+                        el = page.query_selector(sel)
+                        if el:
+                            txt = (el.inner_text() or "").strip()
+                            if len(txt) > 100:
+                                jd_text = txt[:4000]
+                                break
+
+                    if not jd_text:
+                        # Fallback: find longest div with keywords
+                        for div in page.query_selector_all("div"):
+                            txt = (div.inner_text() or "").strip()
+                            if len(txt) > 300 and any(k in txt.lower() for k in ["responsibilities", "requirements", "qualifications"]):
+                                jd_text = txt[:4000]
+                                break
+
+                    jobs[i]["jd"] = jd_text
+                    page.wait_for_timeout(700)  # polite delay
+                except Exception as e:
+                    print(f"[LinkedIn] JD fetch error for {job['url']}: {e}")
+                    jobs[i]["jd"] = ""
+
+            browser.close()
+            print(f"[LinkedIn] Scrape complete — {len(jobs)} jobs, {sum(1 for j in jobs if j['jd'])} with JD")
+
+    except Exception as e:
+        error = f"Playwright error: {str(e)}"
+        print(f"[LinkedIn] ERROR: {error}")
+
+    return jobs, error
+
+
+def linkedin_sync_to_supabase(scraped_jobs):
+    """
+    Merges scraped LinkedIn jobs into Supabase — deduplicates by LinkedIn job ID.
+    Returns (added_count, skipped_count, error).
+    """
+    sb = get_supabase()
+    if not sb:
+        return 0, 0, "Supabase not configured"
+
+    try:
+        existing = sb.table("jobs").select("id, url, linkedInId").execute().data or []
+    except Exception as e:
+        return 0, 0, f"Supabase fetch error: {e}"
+
+    existing_li_ids = set()
+    existing_urls   = set()
+    for j in existing:
+        if j.get("linkedInId"):
+            existing_li_ids.add(j["linkedInId"])
+        if j.get("url"):
+            existing_urls.add(j["url"].split("?")[0].rstrip("/"))
+
+    added = 0
+    skipped = 0
+    import re, datetime
+
+    for job in scraped_jobs:
+        li_id    = job.get("linkedInId", "")
+        clean_url = job.get("url", "").split("?")[0].rstrip("/")
+
+        # Dedup check
+        if li_id and li_id in existing_li_ids:
+            skipped += 1
+            continue
+        if clean_url and clean_url in existing_urls:
+            skipped += 1
+            continue
+
+        stable_id = li_id or f"bm_{int(datetime.datetime.now().timestamp()*1000)}_{added}"
+        record = {
+            "id":          stable_id,
+            "role":        job.get("role", "Unknown"),
+            "company":     job.get("company", "Unknown"),
+            "url":         clean_url,
+            "linkedInId":  li_id,
+            "source":      "LinkedIn",
+            "status":      "saved",
+            "roleType":    job.get("roleType", "Business Analyst"),
+            "jd":          job.get("jd", ""),
+            "dateApplied": job.get("dateApplied", datetime.datetime.now().isoformat()),
+            "notes":       "",
+            "isDemo":      False,
+            "aiScore":     None,
+            "aiLabel":     None,
+            "aiReason":    None,
+        }
+
+        try:
+            sb.table("jobs").insert(record).execute()
+            added += 1
+            if li_id:
+                existing_li_ids.add(li_id)
+            existing_urls.add(clean_url)
+        except Exception as e:
+            print(f"[Supabase] Insert error for {job.get('role')}: {e}")
+
+    return added, skipped, None
+
+
+@app.route("/api/linkedin/scrape", methods=["POST"])
+def linkedin_scrape_route():
+    """Manual trigger: scrape LinkedIn saved jobs and sync to Supabase."""
+    secret = (request.json or {}).get("secret", "")
+    if secret != AGENT_CRON_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    def run_scrape():
+        with app.app_context():
+            print("[LinkedIn Scrape] Starting...")
+            scraped, err = linkedin_scrape_saved_jobs()
+            if err:
+                print(f"[LinkedIn Scrape] Error: {err}")
+                send_email(
+                    "⚠️ LinkedIn Scrape Failed",
+                    f"<h2>LinkedIn Scrape Error</h2><p>{err}</p>"
+                )
+                return
+
+            added, skipped, db_err = linkedin_sync_to_supabase(scraped)
+            if db_err:
+                print(f"[LinkedIn Scrape] DB Error: {db_err}")
+                return
+
+            print(f"[LinkedIn Scrape] Done — {added} new, {skipped} skipped")
+
+            # Run the AI agent on newly added jobs
+            if added > 0:
+                try:
+                    sb = get_supabase()
+                    if sb:
+                        all_jobs = sb.table("jobs").select("*").execute().data or []
+                        to_score = [
+                            j for j in all_jobs
+                            if j.get("jd") and j.get("aiScore") is None and not j.get("isDemo")
+                        ]
+                        if to_score:
+                            agent_run(to_score, trigger="cron")
+                except Exception as e:
+                    print(f"[LinkedIn Scrape] Agent trigger error: {e}")
+            else:
+                send_email(
+                    "✅ LinkedIn Scrape — No New Jobs",
+                    f"<h2>Daily LinkedIn Sync</h2><p>Scraped {len(scraped)} jobs — all {skipped} already in tracker.</p>"
+                )
+
+    threading.Thread(target=run_scrape, daemon=True).start()
+    return jsonify({"status": "started", "message": "LinkedIn scrape running in background"})
+
+
 @app.route("/api/agent/cron", methods=["POST", "GET"])
 def agent_cron():
-    """Daily cron trigger — protected by secret."""
+    """Daily cron trigger — scrapes LinkedIn then runs AI agent pipeline."""
     secret = request.args.get("secret") or (request.json or {}).get("secret", "")
     if secret != AGENT_CRON_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
 
-    sb = get_supabase()
-    if not sb:
-        return jsonify({"error": "Supabase not configured"}), 400
-    try:
-        res  = sb.table("jobs").select("*").execute()
-        jobs = [j for j in (res.data or []) if not j.get("isDemo")]
-        to_run = [
-            j for j in jobs
-            if (j.get("jd") and j.get("aiScore") is None) or
-               (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
-        ]
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    if not to_run:
-        return jsonify({"status": "nothing_to_do"})
-
     def bg():
         with app.app_context():
-            agent_run(to_run, trigger="cron")
+            # Step 1: Scrape LinkedIn saved jobs if credentials are configured
+            if LINKEDIN_EMAIL and LINKEDIN_PASSWORD:
+                print("[Cron] Starting LinkedIn scrape...")
+                scraped, err = linkedin_scrape_saved_jobs()
+                if err:
+                    print(f"[Cron] LinkedIn scrape error: {err}")
+                    send_email("⚠️ LinkedIn Cron Scrape Failed", f"<h2>Error</h2><p>{err}</p>")
+                else:
+                    added, skipped, _ = linkedin_sync_to_supabase(scraped)
+                    print(f"[Cron] LinkedIn: {added} new jobs, {skipped} skipped")
+            else:
+                print("[Cron] LinkedIn credentials not set — skipping scrape")
+
+            # Step 2: Run AI agent on all pending jobs
+            sb = get_supabase()
+            if not sb:
+                return
+            try:
+                res  = sb.table("jobs").select("*").execute()
+                jobs = [j for j in (res.data or []) if not j.get("isDemo")]
+                to_run = [
+                    j for j in jobs
+                    if (j.get("jd") and j.get("aiScore") is None) or
+                       (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
+                ]
+                if to_run:
+                    agent_run(to_run, trigger="cron")
+                else:
+                    print("[Cron] No jobs to process")
+                    send_email("✅ Daily Cron — Nothing to Process",
+                               "<h2>Daily Job Agent</h2><p>All jobs already scored and docs generated.</p>")
+            except Exception as e:
+                print(f"[Cron] Agent error: {e}")
 
     threading.Thread(target=bg, daemon=True).start()
-    return jsonify({"status": "started", "count": len(to_run)})
+    return jsonify({"status": "started", "message": "LinkedIn scrape + agent pipeline running"})
 
 
 @app.route("/api/test-notifications", methods=["POST"])
