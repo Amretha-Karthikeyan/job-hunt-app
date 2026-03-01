@@ -290,12 +290,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .stat-label { font-size: 11px; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.06em; }
 .stat-icon { font-size: 28px; position: absolute; right: 16px; top: 14px; opacity: 0.15; }
 
-/* ============ TAB 1 — RESUME TAILORER ============ */
-.t1-layout { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; }
-.kw-section { margin-top: 16px; }
-.kw-row { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-
-/* ============ TAB 2 — INTERVIEW PREP ============ */
+/* ============ TAB 2 — AI INTERVIEW PREP ============ */
 .star-card {
   background: var(--blue-pale);
   border: 1.5px solid var(--blue-mid);
@@ -310,6 +305,35 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .tag-a { background: #fef3c7; color: #92400e; }
 .tag-r { background: #ede9fe; color: #5b21b6; }
 .star-body { font-size: 12.5px; line-height: 1.6; color: var(--gray-700); }
+
+/* Interview Chat Messages */
+.chat-msg { display:flex; gap:12px; margin-bottom:16px; animation: msgFadeIn 0.3s ease; }
+.chat-msg.ai { flex-direction:row; }
+.chat-msg.user { flex-direction:row-reverse; }
+.chat-avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.chat-msg.ai .chat-avatar { background:var(--blue-pale); }
+.chat-msg.user .chat-avatar { background:#ede9fe; }
+.chat-bubble { max-width:75%; padding:12px 16px; border-radius:14px; font-size:13px; line-height:1.65; }
+.chat-msg.ai .chat-bubble { background:white; border:1px solid var(--gray-200); border-top-left-radius:4px; color:var(--gray-700); }
+.chat-msg.user .chat-bubble { background:var(--blue); color:white; border-top-right-radius:4px; }
+.chat-bubble .score-inline { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; margin-left:6px; }
+.score-good { background:#dcfce7; color:#166534; }
+.score-ok { background:#fef3c7; color:#92400e; }
+.score-weak { background:#fee2e2; color:#991b1b; }
+@keyframes msgFadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+/* Voice waveform animation */
+.voice-bar { width:4px; border-radius:2px; background:var(--blue); animation: voicePulse 0.6s ease-in-out infinite alternate; }
+.voice-bar:nth-child(1) { height:12px; animation-delay:0s; }
+.voice-bar:nth-child(2) { height:20px; animation-delay:0.1s; }
+.voice-bar:nth-child(3) { height:28px; animation-delay:0.2s; }
+.voice-bar:nth-child(4) { height:36px; animation-delay:0.15s; }
+.voice-bar:nth-child(5) { height:24px; animation-delay:0.25s; }
+.voice-bar:nth-child(6) { height:32px; animation-delay:0.1s; }
+.voice-bar:nth-child(7) { height:18px; animation-delay:0.3s; }
+.voice-bar:nth-child(8) { height:26px; animation-delay:0.05s; }
+.voice-bar:nth-child(9) { height:14px; animation-delay:0.2s; }
+@keyframes voicePulse { 0% { transform:scaleY(0.4); opacity:0.5; } 100% { transform:scaleY(1); opacity:1; } }
 
 /* ============ TAB 3 — JOB LIST VIEW ============ */
 .tracker-layout { display: grid; grid-template-columns: 1fr 220px; gap: 20px; }
@@ -591,117 +615,171 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
 <!-- TABS -->
 <div class="tab-nav">
-  <button class="tab-btn active" onclick="switchTab('tab1',this)"><span class="tab-icon">📄</span>Resume Tailorer</button>
-  <button class="tab-btn" onclick="switchTab('tab2',this)"><span class="tab-icon">🎯</span>Interview Prep</button>
-  <button class="tab-btn" onclick="switchTab('tab3',this)"><span class="tab-icon">📋</span>Job Tracker</button>
+  <button class="tab-btn active" onclick="switchTab('tab3',this)"><span class="tab-icon">📋</span>Job Tracker</button>
+  <button class="tab-btn" onclick="switchTab('tab2',this)"><span class="tab-icon">🎯</span>Interview Prep AI</button>
   <button class="tab-btn" onclick="switchTab('tab6',this)"><span class="tab-icon">🌐</span>Job Discovery</button>
   <button class="tab-btn" onclick="switchTab('tab4',this)"><span class="tab-icon">🚀</span>Auto-Apply Centre</button>
 </div>
 
-<!-- ========== TAB 1: RESUME TAILORER ========== -->
-<div id="tab1" class="tab-content active">
-  <div class="t1-layout">
-    <div>
-      <div class="card" style="margin-bottom:20px;">
-        <div class="card-title">📄 Tailor My Resume</div>
+<!-- ========== TAB 2: AI INTERVIEW PREP ========== -->
+<div id="tab2" class="tab-content">
+  <!-- Onboarding / Setup Phase -->
+  <div id="interviewSetup">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:42px;margin-bottom:8px;">🎯</div>
+      <h2 style="font-weight:800;font-size:22px;color:var(--navy);margin:0 0 6px;">AI Interview Coach</h2>
+      <p style="color:var(--gray-500);font-size:13px;margin:0;">I'm here to help you ace your next interview. Let's get started!</p>
+    </div>
+
+    <div class="grid-2" style="max-width:800px;margin:0 auto;gap:20px;">
+      <div class="card">
+        <div class="card-title">📝 Tell Me About Your Interview</div>
         <div class="form-group">
-          <label>Role Type</label>
-          <select class="form-control" id="t1RoleType">
-            <option value="Business Analyst">Business Analyst</option>
-            <option value="Product Owner">Product Owner</option>
-            <option value="Product Manager">Product Manager</option>
-            <option value="AI Product Manager">AI Product Manager</option>
-            <option value="AI Business Analyst">AI Business Analyst</option>
-            <option value="Product Owner – AI/ML">Product Owner – AI/ML</option>
-            <option value="Business Development">Business Development</option>
+          <label>Job Role *</label>
+          <input type="text" class="form-control" id="ipRole" placeholder="e.g. Product Manager, Business Analyst...">
+        </div>
+        <div class="form-group">
+          <label>Company Name *</label>
+          <input type="text" class="form-control" id="ipCompany" placeholder="e.g. Google, DBS, Grab...">
+        </div>
+        <div class="form-group">
+          <label>Interview Type</label>
+          <select class="form-control" id="ipType">
+            <option value="behavioral">Behavioral / Situational</option>
+            <option value="technical">Technical / Case Study</option>
+            <option value="product">Product Sense / Strategy</option>
+            <option value="mixed">Full Mock Interview (Mixed)</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Paste Job Description *</label>
-          <textarea class="form-control" id="t1JD" placeholder="Paste the full job description here..." style="min-height:200px;"></textarea>
+          <label>Job Description (optional — improves accuracy)</label>
+          <textarea class="form-control" id="ipJD" placeholder="Paste the JD for highly tailored questions..." style="min-height:100px;"></textarea>
         </div>
-        <div class="flex-row">
-          <button class="btn btn-primary" onclick="tailorResume()" id="tailorBtn">✨ Tailor My Resume</button>
-          <button class="btn btn-secondary" onclick="generateCoverLetter()" id="coverBtn">📝 Generate Cover Letter</button>
+        <div class="form-group">
+          <label>Resume / Key Experience (optional)</label>
+          <textarea class="form-control" id="ipResume" placeholder="Paste your resume or key bullet points. The AI will reference your real experience in follow-up questions..." style="min-height:80px;"></textarea>
         </div>
       </div>
 
-      <div class="card" id="keywordCard" style="display:none;">
-        <div class="card-title">🔑 Keyword Analysis</div>
-        <div class="flex-row" style="margin-bottom:12px;">
-          <div>Score:</div>
-          <div class="score-badge" id="kwScore">-</div>
+      <div class="card">
+        <div class="card-title">⚙️ Choose Your Mode</div>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+          <label class="mode-option" id="modeChatLabel" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid var(--blue);border-radius:10px;cursor:pointer;background:var(--blue-pale);">
+            <input type="radio" name="ipMode" value="chat" id="modeChat" checked style="accent-color:var(--blue);width:18px;height:18px;">
+            <div>
+              <div style="font-weight:700;font-size:14px;">💬 Chat Mode</div>
+              <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">Type your answers. AI responds with follow-ups, feedback & scoring.</div>
+            </div>
+          </label>
+          <label class="mode-option" id="modeVoiceLabel" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid var(--gray-200);border-radius:10px;cursor:pointer;">
+            <input type="radio" name="ipMode" value="voice" id="modeVoice" style="accent-color:var(--blue);width:18px;height:18px;">
+            <div>
+              <div style="font-weight:700;font-size:14px;">🎙️ Voice Mode</div>
+              <div style="font-size:11px;color:var(--gray-500);margin-top:2px;">Speak your answers using your microphone. AI listens, transcribes & coaches.</div>
+            </div>
+          </label>
         </div>
-        <div class="kw-section">
-          <div class="section-label">✅ Keywords Found</div>
-          <div class="kw-row" id="kwFound"></div>
+
+        <div class="divider"></div>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">🧠 Interview Intelligence</div>
+        <div style="font-size:12px;color:var(--gray-500);line-height:1.6;">
+          Powered by techniques from top interview prep platforms:
+          <ul style="margin:8px 0 0 16px;padding:0;">
+            <li><strong>Behavioral STAR method</strong> — structured Situation, Task, Action, Result</li>
+            <li><strong>Company-specific research</strong> — Glassdoor questions, culture, process</li>
+            <li><strong>Product/Case frameworks</strong> — Exponent, PrepLounge style</li>
+            <li><strong>Real-time feedback</strong> — filler words, confidence, structure scoring</li>
+            <li><strong>Adaptive follow-ups</strong> — AI digs deeper like a real interviewer</li>
+          </ul>
         </div>
-        <div class="kw-section" style="margin-top:14px;">
-          <div class="section-label">❌ Keywords Missing</div>
-          <div class="kw-row" id="kwMissing"></div>
+
+        <button class="btn btn-primary" onclick="startInterviewSession()" id="startInterviewBtn" style="width:100%;margin-top:16px;padding:14px;font-size:15px;">
+          🚀 Start Interview Session
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Interview Session -->
+  <div id="interviewSession" style="display:none;">
+    <!-- Top bar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <span style="font-weight:800;font-size:16px;color:var(--navy);" id="sessionTitle">Mock Interview</span>
+        <span style="font-size:12px;color:var(--gray-400);margin-left:8px;" id="sessionMeta"></span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-secondary" onclick="endInterviewSession()">⏹ End Session</button>
+        <button class="btn btn-sm btn-ghost" onclick="downloadInterviewTranscript()">⬇ Download Transcript</button>
+      </div>
+    </div>
+
+    <!-- Score cards -->
+    <div class="grid-4" style="margin-bottom:16px;" id="interviewScoreCards">
+      <div class="stat-card blue"><div class="stat-icon">❓</div><div class="stat-label">Questions Asked</div><div class="stat-value" id="ipQCount">0</div></div>
+      <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-label">Answered</div><div class="stat-value" id="ipACount">0</div></div>
+      <div class="stat-card amber"><div class="stat-icon">⭐</div><div class="stat-label">Avg Score</div><div class="stat-value" id="ipAvgScore">—</div></div>
+      <div class="stat-card purple"><div class="stat-icon">⏱️</div><div class="stat-label">Session Time</div><div class="stat-value" id="ipTimer">0:00</div></div>
+    </div>
+
+    <!-- Chat area -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div id="interviewChat" style="height:420px;overflow-y:auto;padding:20px;background:#fafbfc;">
+        <!-- Messages rendered here -->
+      </div>
+
+      <!-- Input area -->
+      <div style="border-top:1.5px solid var(--gray-200);padding:14px 16px;background:white;">
+        <!-- Voice indicator (hidden by default) -->
+        <div id="voiceIndicator" style="display:none;text-align:center;margin-bottom:10px;">
+          <div id="voiceWaveform" style="display:flex;align-items:center;justify-content:center;gap:3px;height:40px;">
+            <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+            <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+            <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+          </div>
+          <div style="font-size:11px;color:var(--blue);margin-top:4px;" id="voiceStatus">🎙️ Listening...</div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <textarea class="form-control" id="interviewInput" placeholder="Type your answer here... (Press Enter to send, Shift+Enter for new line)" style="min-height:44px;max-height:120px;resize:vertical;flex:1;margin:0;" onkeydown="handleInterviewKeydown(event)"></textarea>
+          <button class="btn btn-primary" onclick="sendInterviewAnswer()" id="sendAnswerBtn" style="height:44px;min-width:44px;padding:0 14px;">
+            ➤
+          </button>
+          <button class="btn btn-secondary" onclick="toggleVoiceInput()" id="voiceToggleBtn" style="height:44px;min-width:44px;padding:0 12px;" title="Toggle voice input">
+            🎙️
+          </button>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;">
+          <span style="font-size:10px;color:var(--gray-400);">💡 Tip: Answer in STAR format (Situation → Task → Action → Result) for behavioral questions</span>
+          <span style="font-size:10px;color:var(--gray-400);" id="typingIndicator"></span>
         </div>
       </div>
     </div>
 
-    <div>
-      <div class="card" id="resumeOutputCard" style="margin-bottom:20px;">
-        <div class="flex-between" style="margin-bottom:14px;">
-          <div class="card-title" style="margin-bottom:0;">📋 Tailored Resume</div>
-          <button class="btn btn-sm btn-secondary" onclick="downloadOutput('resumeOutput','tailored_resume.txt')" id="dlResumeBtn" style="display:none;">⬇ Download</button>
-        </div>
-        <div class="output-area" id="resumeOutput">
-          <span class="output-placeholder">Your ATS-optimised resume will appear here after clicking "Tailor My Resume"</span>
+    <!-- Company Intel Panel (collapsible) -->
+    <div class="card" style="margin-top:16px;" id="companyIntelCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleCompanyIntel()">
+        <div class="card-title" style="margin:0;">🏢 Company Intelligence</div>
+        <span id="companyIntelToggle" style="font-size:18px;color:var(--gray-400);">▼</span>
+      </div>
+      <div id="companyIntelContent" style="display:none;margin-top:12px;">
+        <div style="text-align:center;padding:20px;color:var(--gray-400);font-size:12px;" id="companyIntelLoading">
+          Loading company intelligence...
         </div>
       </div>
-      <div class="card" id="coverOutputCard">
-        <div class="flex-between" style="margin-bottom:14px;">
-          <div class="card-title" style="margin-bottom:0;">✉️ Cover Letter</div>
-          <button class="btn btn-sm btn-secondary" onclick="downloadOutput('coverOutput','cover_letter.txt')" id="dlCoverBtn" style="display:none;">⬇ Download</button>
-        </div>
-        <div class="output-area" id="coverOutput">
-          <span class="output-placeholder">Your cover letter will appear here after clicking "Generate Cover Letter"</span>
-        </div>
-      </div>
+    </div>
+
+    <!-- Session Summary (shown at end) -->
+    <div class="card" style="margin-top:16px;display:none;" id="sessionSummaryCard">
+      <div class="card-title">📊 Session Summary & Feedback</div>
+      <div id="sessionSummaryContent"></div>
     </div>
   </div>
 </div>
 
-<!-- ========== TAB 2: INTERVIEW PREP ========== -->
-<div id="tab2" class="tab-content">
-  <div class="grid-half">
-    <div class="card">
-      <div class="card-title">🎯 Interview Prep Generator</div>
-      <div class="form-group">
-        <label>Company Name</label>
-        <input type="text" class="form-control" id="t2Company" placeholder="e.g. Grab, GovTech, DBS...">
-      </div>
-      <div class="form-group">
-        <label>Role Type</label>
-        <select class="form-control" id="t2RoleType">
-          <option value="Business Analyst">Business Analyst</option>
-          <option value="Product Owner">Product Owner</option>
-          <option value="Product Manager">Product Manager</option>
-          <option value="Business Development">Business Development</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Job Description (optional but helps)</label>
-        <textarea class="form-control" id="t2JD" placeholder="Paste JD for more tailored prep..." style="min-height:120px;"></textarea>
-      </div>
-      <button class="btn btn-primary" onclick="generateInterviewPrep()" id="prepBtn" style="width:100%;">🚀 Prepare Me for Interview</button>
-    </div>
-
-    <div id="prepOutputArea">
-      <div style="color:var(--gray-400);text-align:center;padding:60px 20px;">
-        <div style="font-size:48px;margin-bottom:12px;">🎙️</div>
-        <div style="font-size:14px;">Fill in the details and generate your personalised interview prep kit</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ========== TAB 3: JOB TRACKER ========== -->
-<div id="tab3" class="tab-content">
+<!-- ========== TAB 3: JOB TRACKER (now default) ========== -->
+<div id="tab3" class="tab-content active">
   <!-- Bookmarklet Banner (always visible) -->
   <!-- Bookmarklet Setup Banner -->
   <div id="bookmarkletBanner" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:12px;padding:18px 20px;margin-bottom:16px;color:white;">
@@ -1864,92 +1942,414 @@ function analyzeKeywords(jd, roleType) {
   return { found, missing, score };
 }
 
-// ========== TAB 1: RESUME TAILORER ==========
-async function tailorResume() {
-  const jd = document.getElementById("t1JD").value.trim();
-  const roleType = document.getElementById("t1RoleType").value;
-  if (!jd) { toast("Please paste a job description first", "error"); return; }
-  
-  const btn = document.getElementById("tailorBtn");
-  btn.innerHTML = '<span class="spinner"></span> Tailoring...';
-  btn.disabled = true;
-  document.getElementById("resumeOutput").innerHTML = '<div style="text-align:center;padding:40px;"><span class="spinner spinner-blue"></span><div style="margin-top:12px;color:var(--gray-400);">AI is tailoring your resume...</div></div>';
+// ========== TAB 2: AI INTERVIEW PREP ==========
+let _interviewSession = null;
+let _interviewTimer = null;
+let _interviewStartTime = null;
+let _voiceMode = false;
+let _recognition = null;
+let _questionCount = 0;
+let _answerCount = 0;
+let _scores = [];
 
-  const { found, missing, score } = analyzeKeywords(jd, roleType);
-
-  try {
-    const data = await callBackend("/api/tailor-resume", { jd, roleType });
-    document.getElementById("resumeOutput").textContent = data.result;
-    document.getElementById("dlResumeBtn").style.display = "inline-flex";
-    document.getElementById("keywordCard").style.display = "block";
-    const scoreEl = document.getElementById("kwScore");
-    scoreEl.textContent = `${score}/100`;
-    scoreEl.className = `score-badge ${score >= 70 ? "score-high" : score >= 40 ? "score-mid" : "score-low"}`;
-    document.getElementById("kwFound").innerHTML = found.map(k => `<span class="keyword-chip chip-found">✓ ${k}</span>`).join("");
-    document.getElementById("kwMissing").innerHTML = missing.map(k => `<span class="keyword-chip chip-missing">✗ ${k}</span>`).join("");
-    toast("Resume tailored successfully!", "success");
-  } catch(e) {
-    document.getElementById("resumeOutput").textContent = "Error: " + e.message;
-    toast("Error: " + e.message, "error");
-  }
-  btn.innerHTML = "✨ Tailor My Resume";
-  btn.disabled = false;
-}
-
-async function generateCoverLetter() {
-  const jd = document.getElementById("t1JD").value.trim();
-  const roleType = document.getElementById("t1RoleType").value;
-  if (!jd) { toast("Please paste a job description first", "error"); return; }
-  const btn = document.getElementById("coverBtn");
-  btn.innerHTML = '<span class="spinner"></span> Writing...';
-  btn.disabled = true;
-  document.getElementById("coverOutput").innerHTML = '<div style="text-align:center;padding:40px;"><span class="spinner spinner-blue"></span><div style="margin-top:12px;color:var(--gray-400);">Writing your cover letter...</div></div>';
-  try {
-    const data = await callBackend("/api/cover-letter", { jd, roleType, company: "the company" });
-    document.getElementById("coverOutput").textContent = data.result;
-    document.getElementById("dlCoverBtn").style.display = "inline-flex";
-    toast("Cover letter generated!", "success");
-  } catch(e) {
-    document.getElementById("coverOutput").textContent = "Error: " + e.message;
-    toast("Error: " + e.message, "error");
-  }
-  btn.innerHTML = "📝 Generate Cover Letter";
-  btn.disabled = false;
-}
-
-// ========== TAB 2: INTERVIEW PREP ==========
-async function generateInterviewPrep() {
-  const company = document.getElementById("t2Company").value.trim() || "the company";
-  const roleType = document.getElementById("t2RoleType").value;
-  const jd = document.getElementById("t2JD").value.trim();
-  const btn = document.getElementById("prepBtn");
-  btn.innerHTML = '<span class="spinner"></span> Preparing...';
-  btn.disabled = true;
-  document.getElementById("prepOutputArea").innerHTML = '<div style="text-align:center;padding:60px;"><span class="spinner spinner-blue" style="width:32px;height:32px;border-width:3px;"></span><div style="margin-top:16px;color:var(--gray-400);">Generating your personalised interview prep...</div></div>';
-  try {
-    const data = await callBackend("/api/interview-prep", { company, roleType, jd });
-    document.getElementById("prepOutputArea").innerHTML = formatPrepOutput(data.result);
-    toast("Interview prep ready!", "success");
-  } catch(e) {
-    document.getElementById("prepOutputArea").innerHTML = `<div class="card"><p style="color:red;">Error: ${e.message}</p></div>`;
-    toast("Error: " + e.message, "error");
-  }
-  btn.innerHTML = "🚀 Prepare Me for Interview";
-  btn.disabled = false;
-}
-
-function formatPrepOutput(text) {
-  const sections = text.split(/\n## /).filter(Boolean);
-  let html = "";
-  sections.forEach(section => {
-    const [title, ...body] = section.split("\n");
-    html += `<div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="font-size:15px;">${title.replace(/^##\s*/,"")}</div>
-      <div style="font-size:13px;line-height:1.7;color:var(--gray-700);white-space:pre-wrap;">${body.join("\n")}</div>
-    </div>`;
+// ─── Mode selection radio toggle ───
+document.querySelectorAll('input[name="ipMode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.getElementById('modeChatLabel').style.borderColor = document.getElementById('modeChat').checked ? 'var(--blue)' : 'var(--gray-200)';
+    document.getElementById('modeChatLabel').style.background = document.getElementById('modeChat').checked ? 'var(--blue-pale)' : 'white';
+    document.getElementById('modeVoiceLabel').style.borderColor = document.getElementById('modeVoice').checked ? 'var(--blue)' : 'var(--gray-200)';
+    document.getElementById('modeVoiceLabel').style.background = document.getElementById('modeVoice').checked ? 'var(--blue-pale)' : 'white';
   });
-  if (!html) html = `<div class="card"><div style="font-size:13px;line-height:1.7;color:var(--gray-700);white-space:pre-wrap;">${text}</div></div>`;
-  return html;
+});
+
+async function startInterviewSession() {
+  const role = document.getElementById('ipRole').value.trim();
+  const company = document.getElementById('ipCompany').value.trim();
+  const type = document.getElementById('ipType').value;
+  const jd = document.getElementById('ipJD').value.trim();
+  const resume = document.getElementById('ipResume').value.trim();
+  _voiceMode = document.getElementById('modeVoice').checked;
+
+  if (!role || !company) {
+    toast('Please enter the job role and company name', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('startInterviewBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Starting interview...';
+
+  try {
+    const r = await fetch('/api/interview/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, company, type, jd, resume })
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+
+    _interviewSession = data.session_id;
+    _questionCount = 1;
+    _answerCount = 0;
+    _scores = [];
+
+    // Switch to session view
+    document.getElementById('interviewSetup').style.display = 'none';
+    document.getElementById('interviewSession').style.display = 'block';
+    document.getElementById('sessionTitle').textContent = `${role} @ ${company}`;
+    document.getElementById('sessionMeta').textContent = `${type} interview`;
+
+    // Start timer
+    _interviewStartTime = Date.now();
+    _interviewTimer = setInterval(updateInterviewTimer, 1000);
+
+    // Render first message
+    const chatEl = document.getElementById('interviewChat');
+    chatEl.innerHTML = '';
+    appendChatMessage('ai', data.message);
+    updateInterviewStats();
+
+    // Load company intel in background
+    loadCompanyIntel(company, role);
+
+    // Setup voice if selected
+    if (_voiceMode) setupVoiceRecognition();
+
+    toast('Interview session started! Good luck! 🍀', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 Start Interview Session';
+  }
+}
+
+function appendChatMessage(type, content) {
+  const chatEl = document.getElementById('interviewChat');
+  const avatar = type === 'ai' ? '🤖' : '👤';
+
+  // Parse markdown-style formatting
+  let html = content
+    .replace(/\*\*Score:\s*(\d+)\/10\*\*/g, (m, s) => {
+      const num = parseInt(s);
+      const cls = num >= 7 ? 'score-good' : num >= 5 ? 'score-ok' : 'score-weak';
+      return `<span class="score-inline ${cls}">Score: ${s}/10</span>`;
+    })
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = `chat-msg ${type}`;
+  msgDiv.innerHTML = `
+    <div class="chat-avatar">${avatar}</div>
+    <div class="chat-bubble">${html}</div>
+  `;
+  chatEl.appendChild(msgDiv);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function handleInterviewKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendInterviewAnswer();
+  }
+}
+
+async function sendInterviewAnswer() {
+  const input = document.getElementById('interviewInput');
+  const answer = input.value.trim();
+  if (!answer || !_interviewSession) return;
+
+  const btn = document.getElementById('sendAnswerBtn');
+  btn.disabled = true;
+  input.value = '';
+  input.style.height = '44px';
+
+  // Show user message
+  appendChatMessage('user', answer);
+  _answerCount++;
+
+  // Show typing indicator
+  document.getElementById('typingIndicator').textContent = '🤖 AI is thinking...';
+
+  try {
+    const r = await fetch('/api/interview/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: _interviewSession, answer })
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+
+    appendChatMessage('ai', data.message);
+    _questionCount = data.question_count;
+    if (data.avg_score) {
+      _scores.push(data.avg_score);
+    }
+    updateInterviewStats();
+
+    // Auto-start voice if in voice mode
+    if (_voiceMode && _recognition) {
+      setTimeout(() => _recognition.start(), 500);
+    }
+  } catch(e) {
+    appendChatMessage('ai', `⚠️ Error: ${e.message}. Please try again.`);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('typingIndicator').textContent = '';
+    input.focus();
+  }
+}
+
+function updateInterviewStats() {
+  document.getElementById('ipQCount').textContent = _questionCount;
+  document.getElementById('ipACount').textContent = _answerCount;
+  const avgScore = _scores.length > 0 ? (_scores.reduce((a, b) => a + b, 0) / _scores.length).toFixed(1) : '—';
+  document.getElementById('ipAvgScore').textContent = avgScore;
+}
+
+function updateInterviewTimer() {
+  if (!_interviewStartTime) return;
+  const elapsed = Math.floor((Date.now() - _interviewStartTime) / 1000);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  document.getElementById('ipTimer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+async function endInterviewSession() {
+  if (!_interviewSession) return;
+  if (!confirm('End this interview session? You\'ll get a detailed performance summary.')) return;
+
+  // Stop timer
+  if (_interviewTimer) clearInterval(_interviewTimer);
+  if (_recognition) { try { _recognition.stop(); } catch(e) {} }
+
+  const endBtn = document.querySelector('#interviewSession .btn-secondary');
+  if (endBtn) { endBtn.disabled = true; endBtn.textContent = '⏳ Generating summary...'; }
+
+  try {
+    const r = await fetch('/api/interview/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: _interviewSession })
+    });
+    const data = await r.json();
+
+    // Show summary
+    const summaryCard = document.getElementById('sessionSummaryCard');
+    const summaryContent = document.getElementById('sessionSummaryContent');
+    summaryCard.style.display = 'block';
+
+    let summaryHtml = data.summary
+      .replace(/## ([^\n]+)/g, '<h3 style="font-weight:700;font-size:14px;color:var(--navy);margin:16px 0 8px;">$1</h3>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+
+    summaryHtml += `<div class="divider"></div>
+      <div class="grid-4" style="gap:10px;">
+        <div style="text-align:center;"><div style="font-size:24px;font-weight:800;color:var(--blue);">${data.total_questions}</div><div style="font-size:11px;color:var(--gray-400);">Questions</div></div>
+        <div style="text-align:center;"><div style="font-size:24px;font-weight:800;color:var(--green,#059669);">${data.total_answers}</div><div style="font-size:11px;color:var(--gray-400);">Answers</div></div>
+        <div style="text-align:center;"><div style="font-size:24px;font-weight:800;color:#f59e0b;">${data.avg_score || '—'}</div><div style="font-size:11px;color:var(--gray-400);">Avg Score</div></div>
+        <div style="text-align:center;"><div style="font-size:24px;font-weight:800;color:#8b5cf6;">${Math.floor(data.duration_seconds/60)}m ${data.duration_seconds%60}s</div><div style="font-size:11px;color:var(--gray-400);">Duration</div></div>
+      </div>`;
+
+    summaryContent.innerHTML = summaryHtml;
+
+    // Store transcript for download
+    _lastTranscript = data.transcript;
+    _lastSummary = data.summary;
+
+    toast('Interview session ended. Review your summary below!', 'success');
+  } catch(e) {
+    toast('Error generating summary: ' + e.message, 'error');
+  } finally {
+    if (endBtn) { endBtn.disabled = false; endBtn.textContent = '⏹ End Session'; }
+    _interviewSession = null;
+  }
+}
+
+let _lastTranscript = '';
+let _lastSummary = '';
+
+function downloadInterviewTranscript() {
+  const content = `INTERVIEW SESSION TRANSCRIPT\n${'='.repeat(50)}\n\n${_lastTranscript || 'No transcript available'}\n\n${'='.repeat(50)}\nSESSION SUMMARY\n${'='.repeat(50)}\n\n${_lastSummary || ''}`;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `interview_transcript_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Company Intelligence ───
+async function loadCompanyIntel(company, role) {
+  try {
+    const r = await fetch('/api/interview/company-intel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, role })
+    });
+    const data = await r.json();
+
+    const content = document.getElementById('companyIntelContent');
+    let html = '';
+
+    if (data.ai_intel) {
+      html += data.ai_intel
+        .replace(/## ([^\n]+)/g, '<h3 style="font-weight:700;font-size:13px;color:var(--navy);margin:12px 0 6px;">$1</h3>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    if (data.web_snippets && data.web_snippets.length > 0) {
+      html += '<div class="divider"></div><h3 style="font-weight:700;font-size:13px;color:var(--navy);margin:12px 0 6px;">🔍 Web Research Snippets</h3>';
+      html += '<div style="font-size:12px;color:var(--gray-500);line-height:1.6;">';
+      data.web_snippets.forEach(s => { html += `<div style="padding:6px 0;border-bottom:1px solid var(--gray-100);">• ${s}</div>`; });
+      html += '</div>';
+    }
+
+    content.innerHTML = `<div style="font-size:12px;line-height:1.7;color:var(--gray-700);">${html}</div>`;
+  } catch(e) {
+    document.getElementById('companyIntelContent').innerHTML = `<div style="color:var(--gray-400);font-size:12px;">Could not load company intel: ${e.message}</div>`;
+  }
+}
+
+function toggleCompanyIntel() {
+  const content = document.getElementById('companyIntelContent');
+  const toggle = document.getElementById('companyIntelToggle');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.textContent = '▲';
+  } else {
+    content.style.display = 'none';
+    toggle.textContent = '▼';
+  }
+}
+
+// ─── Voice Mode (Web Speech API) ───
+function setupVoiceRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast('Voice mode not supported in this browser. Falling back to chat mode.', 'warning');
+    _voiceMode = false;
+    return;
+  }
+
+  _recognition = new SpeechRecognition();
+  _recognition.continuous = true;
+  _recognition.interimResults = true;
+  _recognition.lang = 'en-US';
+
+  let finalTranscript = '';
+  let interimTranscript = '';
+
+  _recognition.onresult = (event) => {
+    interimTranscript = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + ' ';
+      } else {
+        interimTranscript += event.results[i][0].transcript;
+      }
+    }
+    document.getElementById('interviewInput').value = finalTranscript + interimTranscript;
+    document.getElementById('voiceStatus').textContent = '🎙️ Listening... (speak your answer)';
+  };
+
+  _recognition.onend = () => {
+    document.getElementById('voiceIndicator').style.display = 'none';
+    if (finalTranscript.trim()) {
+      document.getElementById('interviewInput').value = finalTranscript.trim();
+      // Auto-send after a brief pause
+      setTimeout(() => {
+        if (document.getElementById('interviewInput').value.trim()) {
+          sendInterviewAnswer();
+        }
+      }, 1000);
+    }
+    finalTranscript = '';
+    interimTranscript = '';
+  };
+
+  _recognition.onerror = (e) => {
+    document.getElementById('voiceIndicator').style.display = 'none';
+    if (e.error !== 'aborted') {
+      document.getElementById('voiceStatus').textContent = `⚠️ ${e.error}`;
+    }
+  };
+
+  // Auto-start
+  toggleVoiceInput();
+}
+
+function toggleVoiceInput() {
+  const indicator = document.getElementById('voiceIndicator');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!_recognition && SpeechRecognition) {
+    _recognition = new SpeechRecognition();
+    _recognition.continuous = true;
+    _recognition.interimResults = true;
+    _recognition.lang = 'en-US';
+
+    let finalTranscript = '';
+    _recognition.onresult = (event) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      document.getElementById('interviewInput').value = finalTranscript + interim;
+    };
+    _recognition.onend = () => {
+      indicator.style.display = 'none';
+      if (finalTranscript.trim()) {
+        document.getElementById('interviewInput').value = finalTranscript.trim();
+        finalTranscript = '';
+      }
+    };
+    _recognition.onerror = () => { indicator.style.display = 'none'; };
+  }
+
+  if (!_recognition) {
+    toast('Speech recognition not available in this browser', 'warning');
+    return;
+  }
+
+  if (indicator.style.display === 'none') {
+    indicator.style.display = 'block';
+    try { _recognition.start(); } catch(e) {}
+    document.getElementById('voiceStatus').textContent = '🎙️ Listening...';
+    document.getElementById('voiceToggleBtn').style.background = '#fee2e2';
+    document.getElementById('voiceToggleBtn').textContent = '⏹';
+  } else {
+    indicator.style.display = 'none';
+    try { _recognition.stop(); } catch(e) {}
+    document.getElementById('voiceToggleBtn').style.background = '';
+    document.getElementById('voiceToggleBtn').textContent = '🎙️';
+  }
+}
+
+// ─── Interview from Job Tracker ───
+function prepareInterviewForJob(id) {
+  const jobs = getJobs();
+  const j = jobs.find(j => String(j.id) === String(id));
+  if (!j) return;
+
+  // Switch to Interview Prep tab
+  const tab2btn = document.querySelector('.tab-btn:nth-child(2)');
+  switchTab('tab2', tab2btn);
+
+  // Pre-fill fields
+  if (j.role) document.getElementById('ipRole').value = j.role;
+  if (j.company) document.getElementById('ipCompany').value = j.company;
+  if (j.jd) document.getElementById('ipJD').value = j.jd;
+
+  toast(`🎯 Ready to prep for: ${j.role} at ${j.company}`, 'success');
 }
 
 // ========== JOB STORAGE ==========
@@ -2290,26 +2690,23 @@ function tailorForJob(id) {
   const j = jobs.find(j => String(j.id) === String(id));
   if (!j) return;
 
-  // Switch to Resume Tailorer tab
-  const tab1btn = document.querySelector('.tab-btn');
-  switchTab('tab1', tab1btn);
+  // Switch to Auto-Apply Centre tab (has Full Kit)
+  const tab4btn = document.querySelector('.tab-btn:nth-child(4)');
+  switchTab('tab4', tab4btn);
 
-  // Pre-fill the JD and role type
-  const jdBox = document.getElementById('t1JD');
-  const roleSelect = document.getElementById('t1RoleType');
+  // Pre-fill the Full Kit fields
+  const kitCompany = document.getElementById('kitCompany');
+  const kitRole = document.getElementById('kitRole');
+  const kitJD = document.getElementById('kitJD');
+  const kitRoleType = document.getElementById('kitRoleType');
 
-  if (j.jd) {
-    jdBox.value = j.jd;
-  } else if (j.url) {
-    jdBox.value = '';
-    jdBox.placeholder = `No JD yet for this job. Click "📥 JD" on the row first, or paste the JD here.\n\nJob: ${j.role} at ${j.company}\nURL: ${j.url}`;
-  }
-
-  if (j.roleType && roleSelect) {
-    // Try to match to existing option
-    const opts = Array.from(roleSelect.options).map(o => o.value);
+  if (kitCompany) kitCompany.value = j.company || '';
+  if (kitRole) kitRole.value = j.role || '';
+  if (kitJD && j.jd) kitJD.value = j.jd;
+  if (kitRoleType && j.roleType) {
+    const opts = Array.from(kitRoleType.options).map(o => o.value);
     const match = opts.find(o => o.toLowerCase() === (j.roleType||'').toLowerCase());
-    if (match) roleSelect.value = match;
+    if (match) kitRoleType.value = match;
   }
 
   // Show toast with job context
@@ -3424,7 +3821,7 @@ function checkHashImport() {
     const incoming = JSON.parse(json);
     if (!Array.isArray(incoming) || incoming.length === 0) return;
 
-    const tab3btn = document.querySelector('.tab-btn:nth-child(3)');
+    const tab3btn = document.querySelector('.tab-btn:nth-child(1)');
     if (tab3btn) switchTab('tab3', tab3btn);
 
     mergeBookmarkletJobs(incoming);

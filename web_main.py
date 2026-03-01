@@ -471,6 +471,310 @@ Specific tip based on the candidate's certifications and experience level."""
     result = call_claude(prompt)
     return jsonify({"result": result})
 
+
+# ─── INTERACTIVE AI INTERVIEW COACH ─────────────────────────────────────────
+
+# In-memory session store (per-server; for multi-server use Redis/Supabase)
+_interview_sessions = {}
+
+def _scrape_company_intel(company):
+    """Try to gather company interview intelligence from public sources."""
+    intel = {"glassdoor": None, "general": None}
+    try:
+        import requests as http_req
+        # Try Glassdoor-style search via Google
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        queries = [
+            f"{company} interview questions glassdoor",
+            f"{company} interview process experience",
+        ]
+        snippets = []
+        for q in queries[:1]:  # limit to 1 query to be fast
+            try:
+                url = f"https://www.google.com/search?q={q.replace(' ', '+')}&num=5"
+                r = http_req.get(url, headers=headers, timeout=8)
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(r.text, "html.parser")
+                for div in soup.select(".BNeawe.s3v9rd"):
+                    text = div.get_text(strip=True)
+                    if len(text) > 40:
+                        snippets.append(text[:300])
+                    if len(snippets) >= 5:
+                        break
+            except Exception:
+                pass
+        if snippets:
+            intel["glassdoor"] = snippets
+    except Exception:
+        pass
+    return intel
+
+
+@app.route("/api/interview/start", methods=["POST"])
+def interview_start():
+    """Start an interactive interview session."""
+    data = request.json or {}
+    role = data.get("role", "").strip()
+    company = data.get("company", "").strip()
+    interview_type = data.get("type", "behavioral")
+    jd = data.get("jd", "").strip()
+    resume_text = data.get("resume", "").strip()
+
+    if not role or not company:
+        return jsonify({"error": "Role and company are required"}), 400
+
+    P = get_active_profile()
+
+    # Build candidate context from profile + optional resume
+    candidate_info = f"Name: {P.get('name', 'Candidate')}\n"
+    if P.get('headline'):
+        candidate_info += f"Headline: {P['headline']}\n"
+    if P.get('summary'):
+        candidate_info += f"Summary: {P['summary'][:300]}\n"
+    for exp in P.get('experience', [])[:3]:
+        bullets = '; '.join(exp.get('bullets', [])[:2])
+        candidate_info += f"- {exp.get('company','')} | {exp.get('role','')} ({exp.get('period','')}): {bullets}\n"
+    if resume_text:
+        candidate_info += f"\nResume excerpt:\n{resume_text[:800]}\n"
+
+    # Type-specific instruction
+    type_instructions = {
+        "behavioral": """Focus on behavioral and situational questions using the STAR method.
+Ask questions like "Tell me about a time when..." and "How would you handle...".
+Cover: leadership, conflict, failure, teamwork, prioritization, stakeholder management.
+After each answer, evaluate their STAR structure and probe deeper.""",
+
+        "technical": """Focus on technical and case study questions relevant to the role.
+Include: system design, data analysis, technical problem-solving, SQL/analytics scenarios.
+Ask follow-up questions to test depth of knowledge.""",
+
+        "product": f"""Focus on product sense, strategy, and case study questions.
+Use frameworks from top PM prep (Exponent, PrepLounge style).
+Include: product design, metrics/KPIs, go-to-market, prioritization frameworks, estimation.
+After each answer, evaluate their structured thinking.""",
+
+        "mixed": """Conduct a realistic full mock interview mixing:
+- 2 behavioral/situational questions (STAR method)
+- 2 technical/role-specific questions
+- 1 product sense or case question
+Transition naturally between types like a real interviewer.""",
+    }
+
+    # Try to get company intel
+    company_intel = _scrape_company_intel(company)
+    intel_context = ""
+    if company_intel.get("glassdoor"):
+        intel_context = f"\nCompany interview intelligence (from web research):\n" + "\n".join(f"- {s}" for s in company_intel["glassdoor"][:3])
+
+    session_id = f"session_{id(data)}_{__import__('time').time()}"
+
+    system_prompt = f"""You are an expert AI interview coach conducting a realistic mock interview.
+You are interviewing a candidate for the role of **{role}** at **{company}**.
+
+CANDIDATE PROFILE:
+{candidate_info}
+
+{"JOB DESCRIPTION:\n" + jd[:1000] if jd else ""}
+{intel_context}
+
+INTERVIEW TYPE: {interview_type}
+{type_instructions.get(interview_type, type_instructions['behavioral'])}
+
+RULES:
+1. Ask ONE question at a time. Wait for the candidate's answer before continuing.
+2. After each answer, provide:
+   - A brief score (1-10) with reasoning
+   - Specific feedback on what was good and what to improve
+   - A follow-up or new question
+3. Be encouraging but honest. Point out weak areas constructively.
+4. Track which competencies you've covered.
+5. If the answer is vague, probe deeper — "Can you be more specific?" or "What was the measurable outcome?"
+6. Reference the candidate's actual experience from their profile when asking questions.
+7. Vary difficulty — start with a warm-up question, then increase complexity.
+8. Format your response as:
+   **Score: X/10** [brief reason]
+   **Feedback:** [specific feedback]
+   **Next Question:** [the next question]
+   (For the FIRST message, skip score/feedback and just ask an opening question with a brief welcome.)"""
+
+    # Generate the first question
+    first_msg_prompt = f"""{system_prompt}
+
+Start the interview now. Welcome the candidate warmly, mention the role and company, and ask your first question.
+Keep the welcome to 2 sentences max, then ask the question."""
+
+    first_response = call_claude(first_msg_prompt)
+
+    # Store session
+    _interview_sessions[session_id] = {
+        "system_prompt": system_prompt,
+        "messages": [
+            {"role": "assistant", "content": first_response}
+        ],
+        "role": role,
+        "company": company,
+        "type": interview_type,
+        "scores": [],
+        "started_at": __import__('time').time(),
+        "company_intel": company_intel,
+    }
+
+    return jsonify({
+        "session_id": session_id,
+        "message": first_response,
+        "company_intel": company_intel,
+    })
+
+
+@app.route("/api/interview/respond", methods=["POST"])
+def interview_respond():
+    """Process a candidate's answer and generate AI follow-up."""
+    data = request.json or {}
+    session_id = data.get("session_id", "")
+    answer = data.get("answer", "").strip()
+
+    if not session_id or session_id not in _interview_sessions:
+        return jsonify({"error": "Invalid or expired session"}), 400
+    if not answer:
+        return jsonify({"error": "Please provide an answer"}), 400
+
+    session = _interview_sessions[session_id]
+    session["messages"].append({"role": "user", "content": answer})
+
+    # Build conversation for Claude
+    conversation = session["system_prompt"] + "\n\n"
+    conversation += "CONVERSATION SO FAR:\n"
+    for msg in session["messages"]:
+        prefix = "INTERVIEWER" if msg["role"] == "assistant" else "CANDIDATE"
+        conversation += f"\n{prefix}: {msg['content']}\n"
+
+    conversation += "\nINTERVIEWER (now respond with score, feedback, and next question):"
+
+    response = call_claude(conversation)
+
+    session["messages"].append({"role": "assistant", "content": response})
+
+    # Extract score if present
+    import re
+    score_match = re.search(r'\*?\*?Score:\s*(\d+)/10', response)
+    if score_match:
+        session["scores"].append(int(score_match.group(1)))
+
+    return jsonify({
+        "message": response,
+        "question_count": sum(1 for m in session["messages"] if m["role"] == "assistant"),
+        "answer_count": sum(1 for m in session["messages"] if m["role"] == "user"),
+        "avg_score": round(sum(session["scores"]) / len(session["scores"]), 1) if session["scores"] else None,
+    })
+
+
+@app.route("/api/interview/end", methods=["POST"])
+def interview_end():
+    """End interview session and generate comprehensive summary."""
+    data = request.json or {}
+    session_id = data.get("session_id", "")
+
+    if not session_id or session_id not in _interview_sessions:
+        return jsonify({"error": "Invalid or expired session"}), 400
+
+    session = _interview_sessions[session_id]
+
+    # Build full transcript
+    transcript = ""
+    for msg in session["messages"]:
+        prefix = "🤖 Interviewer" if msg["role"] == "assistant" else "👤 You"
+        transcript += f"\n{prefix}:\n{msg['content']}\n"
+
+    summary_prompt = f"""You conducted a mock interview for {session['role']} at {session['company']}.
+Type: {session['type']}
+
+Full transcript:
+{transcript}
+
+Provide a comprehensive session summary with:
+
+## Overall Performance Score
+Give an overall score out of 10 with detailed reasoning.
+
+## Strengths Demonstrated
+List 3-5 specific strengths shown during the interview, with examples from their answers.
+
+## Areas for Improvement
+List 3-5 specific areas to improve, with actionable recommendations.
+
+## STAR Method Assessment
+Rate their use of the STAR method (Situation, Task, Action, Result) in behavioral answers. Which component was weakest?
+
+## Communication Analysis
+Assess: clarity, conciseness, confidence, structure, use of metrics/data.
+
+## Key Recommendations
+Top 3 actionable things to practice before the real interview.
+
+## Sample Improved Answer
+Take their weakest answer and rewrite it as an ideal response.
+
+Be specific, reference their actual answers, and be constructive."""
+
+    summary = call_claude(summary_prompt)
+
+    # Clean up session
+    result = {
+        "summary": summary,
+        "transcript": transcript,
+        "total_questions": sum(1 for m in session["messages"] if m["role"] == "assistant"),
+        "total_answers": sum(1 for m in session["messages"] if m["role"] == "user"),
+        "avg_score": round(sum(session["scores"]) / len(session["scores"]), 1) if session["scores"] else None,
+        "duration_seconds": int(__import__('time').time() - session["started_at"]),
+    }
+
+    del _interview_sessions[session_id]
+    return jsonify(result)
+
+
+@app.route("/api/interview/company-intel", methods=["POST"])
+def interview_company_intel():
+    """Fetch company interview intelligence."""
+    data = request.json or {}
+    company = data.get("company", "").strip()
+    role = data.get("role", "").strip()
+
+    if not company:
+        return jsonify({"error": "Company name required"}), 400
+
+    intel = _scrape_company_intel(company)
+
+    # Also ask AI for company-specific insights
+    prompt = f"""Provide interview intelligence for {role or 'a candidate'} interviewing at {company}:
+
+## Company Overview
+Brief company description, culture, and values (2-3 sentences).
+
+## Interview Process
+Typical interview stages and what to expect at {company}.
+
+## Common Interview Questions at {company}
+List 5 questions commonly asked at {company} based on known patterns.
+
+## Company-Specific Tips
+3 tips specifically for succeeding at a {company} interview.
+
+## Key Values & Culture Fit
+What {company} looks for in candidates — culture signals to demonstrate.
+
+## Recent News & Talking Points
+2-3 recent developments at {company} worth mentioning in the interview.
+
+Be specific to {company}. If you don't have specific info, provide educated guidance based on the company's industry and size."""
+
+    ai_intel = call_claude(prompt)
+
+    return jsonify({
+        "ai_intel": ai_intel,
+        "web_snippets": intel.get("glassdoor", []),
+    })
+
+
 @app.route("/api/full-kit", methods=["POST"])
 def full_kit():
     data = request.json
@@ -2431,6 +2735,7 @@ def get_setting(key):
         sb = get_supabase()
         if not sb:
             return ""
+        ensure_settings_table()
         res = sb.table("settings").select("value").eq("key", key).execute()
         if res.data:
             return res.data[0]["value"]
@@ -2438,18 +2743,37 @@ def get_setting(key):
         pass
     return ""
 
+_settings_table_ok = False
+
 def ensure_settings_table():
     """Create settings table if it does not exist."""
+    global _settings_table_ok
+    if _settings_table_ok:
+        return True
     sb = get_supabase()
-    if not sb: return
+    if not sb: return False
     try:
         sb.table("settings").select("key").limit(1).execute()
+        _settings_table_ok = True
+        return True
     except Exception:
-        # Table missing — create it via raw SQL through Supabase RPC if available
+        # Table missing — try to create it
         try:
             sb.rpc("exec_sql", {"query": "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW())"}).execute()
-        except Exception as e2:
-            print(f"[Settings] Could not auto-create table: {e2}")
+            _settings_table_ok = True
+            print("[Settings] Created settings table via RPC")
+            return True
+        except Exception:
+            # RPC not available — try direct REST creation as last resort
+            try:
+                sb.table("settings").insert({"key": "_init", "value": "1"}).execute()
+                sb.table("settings").delete().eq("key", "_init").execute()
+                _settings_table_ok = True
+                return True
+            except Exception as e3:
+                print(f"[Settings] Could not auto-create table: {e3}")
+                print("[Settings] Please create the table manually — see supabase_setup.sql")
+                return False
 
 
 def upsert_setting(key, value):
@@ -2459,8 +2783,10 @@ def upsert_setting(key, value):
         if not sb:
             print("[Settings] No Supabase client")
             return False
+        # Ensure settings table exists on first use
+        ensure_settings_table()
         result = sb.table("settings").upsert({"key": key, "value": value}, on_conflict="key").execute()
-        print(f"[Settings] Saved {key}: {result}")
+        print(f"[Settings] Saved {key}")
         return True
     except Exception as e:
         print(f"[Settings] upsert error for {key}: {e}")
@@ -2980,5 +3306,10 @@ def test_notifications():
 
 
 if __name__ == "__main__":
+    # Ensure settings table exists at startup
+    try:
+        ensure_settings_table()
+    except Exception as e:
+        print(f"[Startup] Settings table check: {e}")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
