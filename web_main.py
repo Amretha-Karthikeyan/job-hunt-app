@@ -1091,42 +1091,28 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import datetime
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
+def _get_gmail_user():     return os.environ.get("GMAIL_USER", "") or get_setting("GMAIL_USER")
+def _get_gmail_password(): return os.environ.get("GMAIL_APP_PASSWORD", "") or get_setting("GMAIL_APP_PASSWORD")
 GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 AGENT_CRON_SECRET  = os.environ.get("AGENT_CRON_SECRET", "jobhunt2025")
-
-
-def send_telegram(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return False
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        http_requests.post(url, json={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML"
-        }, timeout=10)
-        return True
-    except Exception:
-        return False
-
-
 NOTIFICATION_EMAIL = "amretha.ammu@gmail.com"
 
 def send_email(subject, html_body):
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+    gmail_user = _get_gmail_user()
+    gmail_pw   = _get_gmail_password()
+    if not gmail_user or not gmail_pw:
+        print("Email not configured — set GMAIL_USER and GMAIL_APP_PASSWORD")
         return False
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"]    = GMAIL_USER
+        msg["From"]    = gmail_user
         msg["To"]      = NOTIFICATION_EMAIL
         msg.attach(MIMEText(html_body, "html"))
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, [NOTIFICATION_EMAIL], msg.as_string())
+            server.login(gmail_user, gmail_pw)
+            server.sendmail(gmail_user, [NOTIFICATION_EMAIL], msg.as_string())
         return True
     except Exception as e:
         print(f"Email error: {e}")
@@ -1289,30 +1275,13 @@ def agent_run(jobs_to_process, trigger="manual"):
 
 
 def _send_agent_notifications(summary):
-    """Build Telegram + Email notifications from agent summary."""
+    """Send email notification after agent run."""
     top     = summary["top_jobs"]
     labels  = {"import": "📥 Auto (import)", "cron": "⏰ Daily", "manual": "▶ Manual"}
     trigger_label = labels.get(summary["trigger"], "▶ Run")
     now_str = datetime.datetime.now().strftime("%d %b %Y %H:%M")
 
-    # Telegram
-    lines = [
-        f"<b>🤖 Job Agent — {trigger_label}</b>  <i>{now_str}</i>",
-        f"Processed <b>{summary['total']}</b> · Scored <b>{summary['scored']}</b> · Docs <b>{summary['docs']}</b>",
-        "",
-    ]
-    if top:
-        lines.append("<b>🏆 Top Matches:</b>")
-        for i, j in enumerate(top, 1):
-            docs_flag = " 📄" if j.get("resume_docx_b64") else ""
-            lines.append(
-                f"{i}. <b>{j.get('company')}</b> — {j.get('role')}\n"
-                f"   {j.get('aiLabel','')} {j.get('aiScore','?')}/10{docs_flag}\n"
-                f"   <i>{(j.get('aiReason') or '')[:100]}</i>"
-            )
-    lines.append("\n🔗 Open your tracker to download docs")
-
-    # Email
+    # Email only
     rows_html = ""
     for j in top:
         has_docs = "✅ Ready" if j.get("resume_docx_b64") else "—"
@@ -1418,6 +1387,69 @@ def agent_run_import():
     return jsonify({"status": "started", "count": len(new_jobs)})
 
 
+@app.route("/api/config/save", methods=["POST"])
+def config_save():
+    """Save LinkedIn + email credentials to Supabase config table."""
+    sb = get_supabase()
+    if not sb:
+        return jsonify({"error": "Supabase not configured"}), 400
+    data = request.json or {}
+    try:
+        # Store each key as a row in a simple config table
+        for key, val in data.items():
+            if val:  # only save non-empty values
+                sb.table("config").upsert({"key": key, "value": val}).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/config/load", methods=["GET"])
+def config_load():
+    """Load config from Supabase. Returns keys without sensitive values (masked)."""
+    sb = get_supabase()
+    if not sb:
+        return jsonify({"error": "Supabase not configured"}), 400
+    try:
+        rows = sb.table("config").select("key,value").execute().data or []
+        result = {}
+        for row in rows:
+            k, v = row["key"], row.get("value", "")
+            # Mask passwords/sensitive values
+            if "password" in k.lower() or "secret" in k.lower():
+                result[k] = "••••••••" if v else ""
+            else:
+                result[k] = v
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def get_config_value(key):
+    """Retrieve a single config value from Supabase config table."""
+    # First check env vars (env vars take priority)
+    env_map = {
+        "linkedin_email":    "LINKEDIN_EMAIL",
+        "linkedin_password": "LINKEDIN_PASSWORD",
+        "gmail_user":        "GMAIL_USER",
+        "gmail_app_password":"GMAIL_APP_PASSWORD",
+    }
+    env_key = env_map.get(key)
+    if env_key:
+        val = os.environ.get(env_key, "")
+        if val:
+            return val
+    # Fall back to Supabase config table
+    sb = get_supabase()
+    if not sb:
+        return ""
+    try:
+        rows = sb.table("config").select("value").eq("key", key).execute().data or []
+        return rows[0]["value"] if rows else ""
+    except Exception:
+        return ""
+
+
 @app.route("/api/agent/status", methods=["GET"])
 def agent_status():
     """Return counts of processed vs pending jobs."""
@@ -1439,10 +1471,73 @@ def agent_status():
 
 
 
+# ─── CREDENTIALS STORE ──────────────────────────────────────────────────────
+# Stores LinkedIn + Gmail credentials in Supabase settings table
+# so user can enter them via the UI without touching Render env vars.
+
+def get_setting(key):
+    """Read a setting from Supabase settings table, fallback to env var."""
+    # First try env var (Render dashboard)
+    env_val = os.environ.get(key.upper(), "")
+    if env_val:
+        return env_val
+    # Then try Supabase settings table
+    try:
+        sb = get_supabase()
+        if not sb:
+            return ""
+        res = sb.table("settings").select("value").eq("key", key).execute()
+        if res.data:
+            return res.data[0]["value"]
+    except Exception:
+        pass
+    return ""
+
+def upsert_setting(key, value):
+    """Save a setting to Supabase settings table."""
+    try:
+        sb = get_supabase()
+        if not sb:
+            return False
+        sb.table("settings").upsert({"key": key, "value": value}, on_conflict="key").execute()
+        return True
+    except Exception as e:
+        print(f"Settings upsert error: {e}")
+        return False
+
+@app.route("/api/settings/save", methods=["POST"])
+def save_settings():
+    data   = request.json or {}
+    secret = data.get("secret", "")
+    if secret != AGENT_CRON_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
+    saved = []
+    for key in ["LINKEDIN_EMAIL", "LINKEDIN_PASSWORD", "GMAIL_USER", "GMAIL_APP_PASSWORD"]:
+        val = data.get(key, "").strip()
+        if val:
+            upsert_setting(key, val)
+            saved.append(key)
+    return jsonify({"status": "ok", "saved": saved})
+
+@app.route("/api/settings/load", methods=["GET"])
+def load_settings():
+    """Return non-sensitive settings (mask passwords)."""
+    li_email  = get_setting("LINKEDIN_EMAIL")
+    gmail     = get_setting("GMAIL_USER")
+    li_pw_set = bool(get_setting("LINKEDIN_PASSWORD"))
+    gm_pw_set = bool(get_setting("GMAIL_APP_PASSWORD"))
+    return jsonify({
+        "LINKEDIN_EMAIL":    li_email,
+        "GMAIL_USER":        gmail,
+        "linkedin_pw_set":   li_pw_set,
+        "gmail_pw_set":      gm_pw_set,
+    })
+
+
 # ─── LINKEDIN SCRAPER (Selenium) ────────────────────────────────────────────
 
-LINKEDIN_EMAIL    = os.environ.get("LINKEDIN_EMAIL", "")
-LINKEDIN_PASSWORD = os.environ.get("LINKEDIN_PASSWORD", "")
+def _get_linkedin_email():    return get_setting("LINKEDIN_EMAIL")
+def _get_linkedin_password(): return get_setting("LINKEDIN_PASSWORD")
 
 
 def _make_selenium_driver():
@@ -1494,8 +1589,10 @@ def linkedin_scrape_saved_jobs():
     """
     import re, time, datetime as dt
 
+    LINKEDIN_EMAIL    = _get_linkedin_email()
+    LINKEDIN_PASSWORD = _get_linkedin_password()
     if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
-        return [], "LINKEDIN_EMAIL or LINKEDIN_PASSWORD env vars not set"
+        return [], "LinkedIn credentials not set — enter them in the Agent panel"
 
     try:
         from selenium.webdriver.common.by import By
@@ -1527,8 +1624,8 @@ def linkedin_scrape_saved_jobs():
         print("[LinkedIn] Navigating to login page...")
         driver.get("https://www.linkedin.com/login")
         wait.until(EC.presence_of_element_located((By.ID, "username")))
-        driver.find_element(By.ID, "username").send_keys(LINKEDIN_EMAIL)
-        driver.find_element(By.ID, "password").send_keys(LINKEDIN_PASSWORD)
+        driver.find_element(By.ID, "username").send_keys(email)
+        driver.find_element(By.ID, "password").send_keys(password)
         driver.find_element(By.CSS_SELECTOR, "button[type=submit]").click()
 
         # Wait for redirect away from login
@@ -1761,7 +1858,7 @@ def agent_cron():
     def bg():
         with app.app_context():
             # Step 1: Scrape LinkedIn saved jobs if credentials are configured
-            if LINKEDIN_EMAIL and LINKEDIN_PASSWORD:
+            if _get_linkedin_email() and _get_linkedin_password():
                 print("[Cron] Starting LinkedIn scrape...")
                 scraped, err = linkedin_scrape_saved_jobs()
                 if err:

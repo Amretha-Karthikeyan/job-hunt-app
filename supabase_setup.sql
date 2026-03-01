@@ -47,3 +47,13 @@ CREATE POLICY "Allow all" ON jobs FOR ALL USING (true) WITH CHECK (true);
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_linkedin_id_idx ON jobs("linkedInId") WHERE "linkedInId" IS NOT NULL AND "linkedInId" != '';
 CREATE INDEX IF NOT EXISTS jobs_created_at_idx ON jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
+
+
+-- Settings table for storing credentials entered via UI
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+-- RLS: only service role can read/write (backend uses service key)
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
