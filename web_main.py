@@ -1086,37 +1086,47 @@ def capture_bulk():
 # ═══════════════════════════════════════════════════════════════
 
 import threading
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import datetime
 
-def _get_gmail_user():     return os.environ.get("GMAIL_USER", "") or get_setting("GMAIL_USER")
-def _get_gmail_password(): return os.environ.get("GMAIL_APP_PASSWORD", "") or get_setting("GMAIL_APP_PASSWORD")
-GMAIL_USER         = os.environ.get("GMAIL_USER", "")
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-AGENT_CRON_SECRET  = os.environ.get("AGENT_CRON_SECRET", "jobhunt2025")
-NOTIFICATION_EMAIL = "amretha.ammu@gmail.com"
+AGENT_CRON_SECRET    = os.environ.get("AGENT_CRON_SECRET", "jobhunt2025")
+NOTIFICATION_PHONE   = os.environ.get("NOTIFICATION_PHONE", "")   # e.g. whatsapp:+6590256503
+TWILIO_ACCOUNT_SID   = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN    = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # Twilio sandbox
 
-def send_email(subject, html_body):
-    gmail_user = _get_gmail_user()
-    gmail_pw   = _get_gmail_password()
-    if not gmail_user or not gmail_pw:
-        print("Email not configured — set GMAIL_USER and GMAIL_APP_PASSWORD")
+def send_whatsapp(message):
+    """Send a WhatsApp message via Twilio API."""
+    sid   = _get_twilio_sid()
+    token = _get_twilio_token()
+    to    = _get_whatsapp_to()
+    frm   = TWILIO_WHATSAPP_FROM
+    if not sid or not token or not to:
+        print("WhatsApp not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, NOTIFICATION_PHONE")
         return False
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = gmail_user
-        msg["To"]      = NOTIFICATION_EMAIL
-        msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_pw)
-            server.sendmail(gmail_user, [NOTIFICATION_EMAIL], msg.as_string())
-        return True
+        # Ensure to/from are prefixed with whatsapp:
+        if not to.startswith("whatsapp:"): to = f"whatsapp:{to}"
+        if not frm.startswith("whatsapp:"): frm = f"whatsapp:{frm}"
+        url  = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+        resp = http_requests.post(url, auth=(sid, token), data={"From": frm, "To": to, "Body": message})
+        if resp.status_code in (200, 201):
+            print(f"[WhatsApp] Sent: {message[:60]}...")
+            return True
+        else:
+            print(f"[WhatsApp] Failed {resp.status_code}: {resp.text[:200]}")
+            return False
     except Exception as e:
-        print(f"Email error: {e}")
+        print(f"[WhatsApp] Error: {e}")
         return False
+
+# Keep send_email as alias so existing calls still work
+def send_email(subject, html_body):
+    # Strip HTML tags for WhatsApp plain text
+    import re as _re
+    text = _re.sub(r'<[^>]+>', '', html_body)
+    text = _re.sub(r'\s+', ' ', text).strip()
+    msg  = f"*{subject}*\n\n{text[:1000]}"
+    return send_whatsapp(msg)
 
 
 def agent_process_job(job):
@@ -1431,8 +1441,9 @@ def get_config_value(key):
     env_map = {
         "linkedin_email":    "LINKEDIN_EMAIL",
         "linkedin_password": "LINKEDIN_PASSWORD",
-        "gmail_user":        "GMAIL_USER",
-        "gmail_app_password":"GMAIL_APP_PASSWORD",
+        "twilio_account_sid": "TWILIO_ACCOUNT_SID",
+        "twilio_auth_token":  "TWILIO_AUTH_TOKEN",
+        "notification_phone": "NOTIFICATION_PHONE",
     }
     env_key = env_map.get(key)
     if env_key:
@@ -1512,7 +1523,7 @@ def save_settings():
     if secret != AGENT_CRON_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
     saved = []
-    for key in ["LINKEDIN_EMAIL", "LINKEDIN_PASSWORD", "GMAIL_USER", "GMAIL_APP_PASSWORD"]:
+    for key in ["LINKEDIN_EMAIL", "LINKEDIN_PASSWORD", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "NOTIFICATION_PHONE"]:
         val = data.get(key, "").strip()
         if val:
             upsert_setting(key, val)
@@ -1522,15 +1533,12 @@ def save_settings():
 @app.route("/api/settings/load", methods=["GET"])
 def load_settings():
     """Return non-sensitive settings (mask passwords)."""
-    li_email  = get_setting("LINKEDIN_EMAIL")
-    gmail     = get_setting("GMAIL_USER")
-    li_pw_set = bool(get_setting("LINKEDIN_PASSWORD"))
-    gm_pw_set = bool(get_setting("GMAIL_APP_PASSWORD"))
     return jsonify({
-        "LINKEDIN_EMAIL":    li_email,
-        "GMAIL_USER":        gmail,
-        "linkedin_pw_set":   li_pw_set,
-        "gmail_pw_set":      gm_pw_set,
+        "LINKEDIN_EMAIL":     get_setting("LINKEDIN_EMAIL"),
+        "TWILIO_ACCOUNT_SID": get_setting("TWILIO_ACCOUNT_SID"),
+        "NOTIFICATION_PHONE": get_setting("NOTIFICATION_PHONE"),
+        "linkedin_pw_set":    bool(get_setting("LINKEDIN_PASSWORD")),
+        "twilio_token_set":   bool(get_setting("TWILIO_AUTH_TOKEN")),
     })
 
 
@@ -1624,8 +1632,8 @@ def linkedin_scrape_saved_jobs():
         print("[LinkedIn] Navigating to login page...")
         driver.get("https://www.linkedin.com/login")
         wait.until(EC.presence_of_element_located((By.ID, "username")))
-        driver.find_element(By.ID, "username").send_keys(email)
-        driver.find_element(By.ID, "password").send_keys(password)
+        driver.find_element(By.ID, "username").send_keys(LINKEDIN_EMAIL)
+        driver.find_element(By.ID, "password").send_keys(LINKEDIN_PASSWORD)
         driver.find_element(By.CSS_SELECTOR, "button[type=submit]").click()
 
         # Wait for redirect away from login
@@ -1856,7 +1864,7 @@ def agent_full_run():
       1. Scrape LinkedIn saved jobs (if credentials set)
       2. AI score all unscored jobs
       3. Generate resume + cover letter for scored >= 5
-      4. Email results to amretha.ammu@gmail.com
+      4. WhatsApp notification to configured phone
     """
     def bg():
         with app.app_context():
@@ -1967,10 +1975,9 @@ def agent_cron():
 
 @app.route("/api/test-notifications", methods=["POST"])
 def test_notifications():
-    em = send_email("🤖 Job Agent — Email test",
-                    "<h2>Email connected ✅</h2><p>Notifications working. Sending to amretha.ammu@gmail.com</p>")
+    ok = send_whatsapp("🤖 Job Agent test — WhatsApp connected ✅")
     return jsonify({
-        "email": "✅ sent to amretha.ammu@gmail.com" if em else "❌ not configured — check GMAIL_USER and GMAIL_APP_PASSWORD"
+        "whatsapp": "✅ sent" if ok else "❌ not configured — check Twilio credentials and NOTIFICATION_PHONE"
     })
 
 

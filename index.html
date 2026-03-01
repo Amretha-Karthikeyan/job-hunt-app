@@ -988,7 +988,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
           <div>1️⃣  <b>AI Score</b> every job with a JD — ranks 1–10, labels fit, flags consulting roles</div>
           <div>2️⃣  <b>Generate Resume + Cover Letter</b> for all jobs scored ≥ 5 (right CV template auto-selected)</div>
           <div>3️⃣  <b>Save everything to Supabase</b> — scores, docs, JDs — nothing gets lost</div>
-          <div>4️⃣  <b>Notify you</b> via Email to amretha.ammu@gmail.com with top matches & download links</div>
+          <div>4️⃣  <b>Notify you</b> via Email to WhatsApp +6590256503 with top matches & download links</div>
         </div>
       </div>
 
@@ -999,7 +999,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
           <div>
             <label style="font-weight:600;display:block;margin-bottom:3px;">LinkedIn Email</label>
-            <input id="cfgLinkedInEmail" type="email" placeholder="your@email.com"
+            <input id="cfgLinkedInEmail" type="email" placeholder="your@linkedin-email.com"
               style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
           </div>
           <div>
@@ -1008,13 +1008,18 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
               style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-weight:600;display:block;margin-bottom:3px;">Gmail Sender (for notifications)</label>
-            <input id="cfgGmailUser" type="email" placeholder="sender@gmail.com"
+            <label style="font-weight:600;display:block;margin-bottom:3px;">Twilio Account SID <a href="https://console.twilio.com" target="_blank" style="font-weight:400;font-size:10px;color:#6b7280;">(get free at twilio.com)</a></label>
+            <input id="cfgTwilioSid" type="text" placeholder="ACxxxxxxxxxxxxxxxx"
               style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
           </div>
           <div>
-            <label style="font-weight:600;display:block;margin-bottom:3px;">Gmail App Password</label>
-            <input id="cfgGmailPassword" type="password" placeholder="xxxx xxxx xxxx xxxx"
+            <label style="font-weight:600;display:block;margin-bottom:3px;">Twilio Auth Token</label>
+            <input id="cfgTwilioToken" type="password" placeholder="your auth token"
+              style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="font-weight:600;display:block;margin-bottom:3px;">Your WhatsApp Number <span style="font-weight:400;font-size:10px;color:#6b7280;">(include country code, e.g. +6590256503)</span></label>
+            <input id="cfgWhatsappPhone" type="text" placeholder="+6590256503"
               style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;">
           </div>
         </div>
@@ -1023,12 +1028,12 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
           <button onclick="saveAgentConfig()" style="background:#1d4ed8;color:white;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">
             💾 Save Credentials
           </button>
-          <button class="btn btn-sm btn-ghost" onclick="testNotifications()">🔔 Test Email</button>
+          <button class="btn btn-sm btn-ghost" onclick="testNotifications()">🔔 Test WhatsApp</button>
           <span id="notifTestResult" style="font-size:11px;color:#374151;"></span>
           <span id="cfgSaveResult" style="font-size:11px;color:#374151;"></span>
         </div>
         <div style="margin-top:8px;font-size:11px;color:#92400e;">
-          📧 Notifications → <strong>amretha.ammu@gmail.com</strong> &nbsp;|&nbsp;
+          📧 Notifications → <strong>WhatsApp +6590256503</strong> &nbsp;|&nbsp;
           🔒 Credentials stored securely on server &nbsp;|&nbsp;
           ⏰ LinkedIn auto-scraped daily at 9am SGT
         </div>
@@ -1334,7 +1339,7 @@ const PROFILE = {
   name: "Amretha Karthikeyan",
   address: "#02-321 153 Gangsa Road, Singapore-670153",
   mobile: "+65-90256503",
-  email: "amretha.ammu@gmail.com",
+  email: "WhatsApp +6590256503",
   linkedin: "https://www.linkedin.com/in/amretha-nishanth-534b39101/",
   headline: "Product Owner | Lead BA | Fintech & Digital Products · Singapore",
   aiProjectUrl: "https://stock-monitor-8ak6.onrender.com",
@@ -3230,13 +3235,14 @@ async function importPendingJobs() {}
 // ─── AGENT ──────────────────────────────────────────────────
 
 async function saveAgentConfig() {
-  const email    = document.getElementById('cfgLinkedInEmail').value.trim();
-  const password = document.getElementById('cfgLinkedInPassword').value.trim();
-  const gmail    = document.getElementById('cfgGmailUser').value.trim();
-  const gmailPw  = document.getElementById('cfgGmailPassword').value.trim();
-  const statusEl = document.getElementById('cfgSaveResult');
+  const liEmail    = document.getElementById('cfgLinkedInEmail').value.trim();
+  const liPw       = document.getElementById('cfgLinkedInPassword').value.trim();
+  const twilioSid  = document.getElementById('cfgTwilioSid').value.trim();
+  const twilioTok  = document.getElementById('cfgTwilioToken').value.trim();
+  const wPhone     = document.getElementById('cfgWhatsappPhone').value.trim();
+  const statusEl   = document.getElementById('cfgSaveResult');
 
-  if (!email && !password && !gmail && !gmailPw) {
+  if (!liEmail && !liPw && !twilioSid && !twilioTok && !wPhone) {
     statusEl.textContent = '⚠️ Nothing to save';
     statusEl.style.color = '#b45309';
     return;
@@ -3246,10 +3252,11 @@ async function saveAgentConfig() {
   statusEl.style.color = '#374151';
 
   const payload = { secret: 'jobhunt2025' };
-  if (email)    payload.LINKEDIN_EMAIL    = email;
-  if (password) payload.LINKEDIN_PASSWORD = password;
-  if (gmail)    payload.GMAIL_USER        = gmail;
-  if (gmailPw)  payload.GMAIL_APP_PASSWORD = gmailPw;
+  if (liEmail)   payload.LINKEDIN_EMAIL    = liEmail;
+  if (liPw)      payload.LINKEDIN_PASSWORD = liPw;
+  if (twilioSid) payload.TWILIO_ACCOUNT_SID  = twilioSid;
+  if (twilioTok) payload.TWILIO_AUTH_TOKEN   = twilioTok;
+  if (wPhone)    payload.NOTIFICATION_PHONE  = wPhone;
 
   try {
     const res = await fetch('/api/settings/save', {
@@ -3259,13 +3266,12 @@ async function saveAgentConfig() {
     }).then(r => r.json());
 
     if (res.status === 'ok') {
-      statusEl.textContent = `✅ Saved: ${res.saved.join(', ')}`;
+      statusEl.textContent = '✅ Saved! Click Extract Latest Jobs to test.';
       statusEl.style.color = '#16a34a';
-      // Clear password fields after save for security
       document.getElementById('cfgLinkedInPassword').value = '';
-      document.getElementById('cfgGmailPassword').value = '';
-      document.getElementById('cfgLinkedInPassword').placeholder = '✅ Password saved';
-      document.getElementById('cfgGmailPassword').placeholder = '✅ Password saved';
+      document.getElementById('cfgTwilioToken').value = '';
+      document.getElementById('cfgLinkedInPassword').placeholder = '✅ Saved';
+      document.getElementById('cfgTwilioToken').placeholder = '✅ Saved';
     } else {
       statusEl.textContent = '❌ ' + (res.error || 'Save failed');
       statusEl.style.color = '#dc2626';
@@ -3283,11 +3289,13 @@ async function loadAgentConfig() {
     if (res.LINKEDIN_EMAIL)
       document.getElementById('cfgLinkedInEmail').value = res.LINKEDIN_EMAIL;
     if (res.linkedin_pw_set)
-      document.getElementById('cfgLinkedInPassword').placeholder = '✅ Password saved';
-    if (res.GMAIL_USER)
-      document.getElementById('cfgGmailUser').value = res.GMAIL_USER;
-    if (res.gmail_pw_set)
-      document.getElementById('cfgGmailPassword').placeholder = '✅ Password saved';
+      document.getElementById('cfgLinkedInPassword').placeholder = '✅ Saved';
+    if (res.TWILIO_ACCOUNT_SID)
+      document.getElementById('cfgTwilioSid').value = res.TWILIO_ACCOUNT_SID;
+    if (res.twilio_token_set)
+      document.getElementById('cfgTwilioToken').placeholder = '✅ Saved';
+    if (res.NOTIFICATION_PHONE)
+      document.getElementById('cfgWhatsappPhone').value = res.NOTIFICATION_PHONE;
   } catch(e) {}
 }
 
@@ -3325,7 +3333,7 @@ async function extractLatestJobs() {
   addLog('📋 Scraping your saved jobs (this takes 3–8 mins)...');
   addLog('');
   addLog('💡 You can keep using the app while this runs in the background.');
-  addLog('📧 You will get an email at amretha.ammu@gmail.com when done.');
+  addLog('📱 You will get a WhatsApp message at +6590256503 when done.');
 
   try {
     const data = await fetch('/api/agent/full-run', {
@@ -3345,7 +3353,7 @@ async function extractLatestJobs() {
     addLog('   Step 1 → Scraping LinkedIn saved jobs...');
     addLog('   Step 2 → AI scoring each job (1-10 fit score)...');
     addLog('   Step 3 → Generating tailored resume + cover letter...');
-    addLog('   Step 4 → Emailing results to amretha.ammu@gmail.com');
+    addLog('   Step 4 → Emailing results to WhatsApp +6590256503');
     toast('🚀 Extracting jobs — email coming when done!', 'success');
 
     // Poll for new jobs appearing in the tracker
@@ -3417,9 +3425,9 @@ async function runLinkedInScrape() {
     log('🔐 Logging in as configured user...');
     log('📋 Scraping saved jobs from linkedin.com/my-items/saved-jobs/');
     log('🤖 Will auto-run AI scoring once jobs are imported');
-    log('📧 Email will be sent to amretha.ammu@gmail.com when complete');
+    log('📱 WhatsApp notification will be sent to +6590256503 when complete');
     log('⏳ This takes 3–10 minutes depending on how many saved jobs you have...');
-    toast('🔗 LinkedIn scrape running — check email when done', 'success');
+    toast('🔗 LinkedIn scrape running — check WhatsApp when done', 'success');
 
     // Poll for new jobs appearing
     let pollCount = 0;
@@ -3436,7 +3444,7 @@ async function runLinkedInScrape() {
 
     setTimeout(() => {
       clearInterval(poll);
-      log('⏱ Done polling — check amretha.ammu@gmail.com for results');
+      log('⏱ Done polling — check WhatsApp +6590256503 for results');
       btn.disabled = false; btn.textContent = '🔗 Scrape LinkedIn Now';
     }, 600000); // 10 min timeout
   } catch(e) {
@@ -3491,7 +3499,7 @@ async function runAgent(forceAll = false) {
     }
 
     log(`✅ Processing ${data.count} jobs in background`);
-    log('📬 Email notification will be sent to amretha.ammu@gmail.com when complete');
+    log('📱 WhatsApp notification will be sent to +6590256503 when complete');
     log('⏳ Polling for progress…');
     toast(`🤖 Agent running — ${data.count} jobs`, 'success');
 
@@ -3511,7 +3519,7 @@ async function runAgent(forceAll = false) {
 
     setTimeout(() => {
       clearInterval(poll);
-      log('⏱ Done polling — check amretha.ammu@gmail.com for full results');
+      log('⏱ Done polling — check WhatsApp +6590256503 for full results');
       btn.disabled = false; btn.textContent = '🤖 Run Agent Now';
     }, 300000);
     return;
@@ -3528,7 +3536,7 @@ async function testNotifications() {
   el.textContent = 'Sending…';
   try {
     const d = await fetch('/api/test-notifications', { method: 'POST' }).then(r => r.json());
-    el.textContent = `Email: ${d.email}`;
+    el.textContent = `WhatsApp: ${d.whatsapp}`;
   } catch(e) { el.textContent = 'Error — check Render logs'; }
 }
 
