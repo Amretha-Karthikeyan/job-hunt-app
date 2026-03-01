@@ -18,13 +18,20 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
+print(f"[BOOT] GROQ_API_KEY={'SET' if GROQ_API_KEY else 'MISSING'}")
+print(f"[BOOT] SUPABASE_URL={'SET' if SUPABASE_URL else 'MISSING'} ({SUPABASE_URL[:30]}...)" if SUPABASE_URL else "[BOOT] SUPABASE_URL=MISSING")
+print(f"[BOOT] SUPABASE_KEY={'SET' if SUPABASE_KEY else 'MISSING'}")
+
 def get_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
+        print(f"[Supabase] Not configured: URL={'SET' if SUPABASE_URL else 'EMPTY'}, KEY={'SET' if SUPABASE_KEY else 'EMPTY'}")
         return None
     try:
         from supabase import create_client
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        return client
+    except Exception as e:
+        print(f"[Supabase] create_client failed: {e}")
         return None
 
 def call_claude(prompt):
@@ -839,6 +846,27 @@ def generic():
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
     result = call_claude(full_prompt)
     return jsonify({"result": result})
+
+
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Debug endpoint to check environment configuration."""
+    sb = get_supabase()
+    sb_status = "connected" if sb else "NOT configured"
+    if sb:
+        try:
+            res = sb.table("jobs").select("id", count="exact").execute()
+            sb_status = f"connected ({res.count or 0} jobs in DB)"
+        except Exception as e:
+            sb_status = f"connected but query failed: {str(e)[:100]}"
+    return jsonify({
+        "status": "ok",
+        "groq_api_key": "SET" if GROQ_API_KEY else "MISSING",
+        "supabase_url": "SET" if SUPABASE_URL else "MISSING",
+        "supabase_key": "SET" if SUPABASE_KEY else "MISSING",
+        "supabase_status": sb_status,
+        "supabase_url_preview": (SUPABASE_URL[:40] + "...") if SUPABASE_URL else "empty"
+    })
 
 
 @app.route("/api/jobs", methods=["GET"])
