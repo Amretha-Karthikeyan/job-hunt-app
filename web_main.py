@@ -24,6 +24,150 @@ print(f"[BOOT] SUPABASE_KEY={'SET' if SUPABASE_KEY else 'MISSING'}")
 
 _supabase_error = None
 
+
+# ---------------------------------------------------------------------------
+#  Lightweight Supabase REST wrapper (replaces supabase-py SDK)
+#  Uses PostgREST endpoints directly so any API key format works.
+# ---------------------------------------------------------------------------
+
+class _SupabaseResponse:
+    """Mimics supabase-py execute() result with .data and .count."""
+    def __init__(self, data=None, count=None):
+        self.data = data if data is not None else []
+        self.count = count
+
+
+class _QueryBuilder:
+    """Chainable PostgREST query builder."""
+
+    def __init__(self, base_url, table, headers):
+        self._url = f"{base_url}/rest/v1/{table}"
+        self._headers = dict(headers)
+        self._params = {}
+        self._method = "GET"
+        self._body = None
+        self._count_mode = None
+
+    # --- column selection ---
+    def select(self, columns="*", count=None):
+        self._method = "GET"
+        self._params["select"] = columns
+        if count:
+            self._count_mode = count          # "exact", "planned", "estimated"
+        return self
+
+    # --- filters ---
+    def eq(self, column, value):
+        self._params[column] = f"eq.{value}"
+        return self
+
+    def neq(self, column, value):
+        self._params[column] = f"neq.{value}"
+        return self
+
+    def gt(self, column, value):
+        self._params[column] = f"gt.{value}"
+        return self
+
+    def lt(self, column, value):
+        self._params[column] = f"lt.{value}"
+        return self
+
+    # --- modifiers ---
+    def order(self, column, desc=True):
+        direction = "desc" if desc else "asc"
+        self._params["order"] = f"{column}.{direction}"
+        return self
+
+    def limit(self, n):
+        self._params["limit"] = str(n)
+        return self
+
+    # --- mutations ---
+    def upsert(self, data, on_conflict=None):
+        self._method = "POST"
+        self._headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        if on_conflict:
+            self._params["on_conflict"] = on_conflict
+        self._body = data
+        return self
+
+    def insert(self, data):
+        self._method = "POST"
+        self._headers["Prefer"] = "return=representation"
+        self._body = data
+        return self
+
+    def update(self, data):
+        self._method = "PATCH"
+        self._headers["Prefer"] = "return=representation"
+        self._body = data
+        return self
+
+    def delete(self):
+        self._method = "DELETE"
+        self._headers["Prefer"] = "return=representation"
+        return self
+
+    # --- execute ---
+    def execute(self):
+        headers = dict(self._headers)
+        if self._count_mode:
+            headers["Prefer"] = headers.get("Prefer", "")
+            if headers["Prefer"]:
+                headers["Prefer"] += f",count={self._count_mode}"
+            else:
+                headers["Prefer"] = f"count={self._count_mode}"
+
+        if self._body is not None:
+            headers["Content-Type"] = "application/json"
+
+        resp = http_requests.request(
+            method=self._method,
+            url=self._url,
+            headers=headers,
+            params=self._params,
+            json=self._body if self._body is not None else None,
+            timeout=30,
+        )
+
+        # Parse count from content-range header (e.g. "0-9/42")
+        count = None
+        cr = resp.headers.get("content-range", "")
+        if "/" in cr:
+            try:
+                count = int(cr.split("/")[1])
+            except (ValueError, IndexError):
+                pass
+
+        # PostgREST returns [] on success for DELETE, or the rows
+        try:
+            data = resp.json() if resp.text else []
+        except Exception:
+            data = []
+
+        # Raise on HTTP errors (4xx/5xx) so callers' except blocks catch them
+        if resp.status_code >= 400:
+            msg = data.get("message", resp.text[:200]) if isinstance(data, dict) else resp.text[:200]
+            raise Exception(f"PostgREST {resp.status_code}: {msg}")
+
+        return _SupabaseResponse(data=data, count=count)
+
+
+class _SupabaseREST:
+    """Drop-in replacement for supabase-py Client with .table() interface."""
+
+    def __init__(self, url, key):
+        self._url = url.rstrip("/")
+        self._headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+        }
+
+    def table(self, name):
+        return _QueryBuilder(self._url, name, self._headers)
+
+
 def get_supabase():
     global _supabase_error
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -31,14 +175,15 @@ def get_supabase():
         print(f"[Supabase] {_supabase_error}")
         return None
     try:
-        from supabase import create_client
-        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        client = _SupabaseREST(SUPABASE_URL, SUPABASE_KEY)
+        # Quick connectivity test — just validate the key works
         _supabase_error = None
         return client
     except Exception as e:
-        _supabase_error = f"create_client error: {type(e).__name__}: {e}"
+        _supabase_error = f"REST client init error: {type(e).__name__}: {e}"
         print(f"[Supabase] {_supabase_error}")
         return None
+
 
 def call_claude(prompt):
     """Call GROQ API (OpenAI-compatible) with Llama 3.3 70B model."""
