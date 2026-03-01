@@ -1783,7 +1783,7 @@ def capture_bulk():
 
 
 # ═══════════════════════════════════════════════════════════════
-# JOB DISCOVERY — Scrape Indeed, JobStreet, Workable
+# JOB DISCOVERY — Scrape LinkedIn, Workable, MyCareersFuture + more
 # ═══════════════════════════════════════════════════════════════
 
 import urllib.parse
@@ -1792,107 +1792,68 @@ import datetime as _dt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def _scrape_indeed(keywords, location, max_days):
-    """Scrape Indeed job listings using the Indeed API-like endpoints."""
+def _scrape_mycareersfuture(keywords, location, max_days):
+    """Scrape MyCareersFuture.gov.sg — Singapore Government job portal (free API, no auth)."""
     jobs = []
     try:
         query = urllib.parse.quote_plus(keywords)
-        loc = urllib.parse.quote_plus(location)
+        # MCF API supports pagination (limit up to 100), sorted by newest
+        api_url = f"https://api.mycareersfuture.gov.sg/v2/jobs?search={query}&limit=50&page=0&sortBy=new_posting_date"
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate",
-            "Referer": "https://www.google.com/",
-        }
+        resp = http_requests.get(api_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }, timeout=20)
 
-        # Try multiple Indeed domains
-        domains = [
-            f"https://sg.indeed.com/jobs?q={query}&l={loc}&fromage={max_days}&sort=date&limit=25",
-            f"https://www.indeed.com/jobs?q={query}&l={loc}&fromage={max_days}&sort=date&limit=25",
-        ]
+        if resp.status_code == 200:
+            data = resp.json()
+            for item in data.get("results", []):
+                title = item.get("title", "")
+                company = (item.get("postedCompany") or {}).get("name", "")
+                url = item.get("metadata", {}).get("jobDetailsUrl", "")
+                if not url and item.get("uuid"):
+                    url = f"https://www.mycareersfuture.gov.sg/job/{item['uuid']}"
 
-        from bs4 import BeautifulSoup
+                # Salary info
+                sal = item.get("salary", {})
+                if isinstance(sal, dict):
+                    sal_min = sal.get("minimum", "")
+                    sal_max = sal.get("maximum", "")
+                    sal_type = (sal.get("type") or {}).get("salaryType", "") if isinstance(sal.get("type"), dict) else ""
+                    salary_str = f"${sal_min}-${sal_max} {sal_type}".strip() if sal_min else ""
+                else:
+                    salary_str = ""
 
-        for url in domains:
-            try:
-                resp = http_requests.get(url, headers=headers, timeout=20, allow_redirects=True)
-                if resp.status_code != 200:
-                    continue
-                soup = BeautifulSoup(resp.text, "html.parser")
+                # Description (HTML) — strip tags for plain text
+                desc_html = item.get("description", "") or ""
+                from bs4 import BeautifulSoup
+                desc_text = BeautifulSoup(desc_html, "html.parser").get_text(separator=" ", strip=True)[:4000]
 
-                # Try to parse embedded JSON data (Indeed stores job data in script tags)
-                import json as _json
-                for script in soup.find_all("script", type="application/ld+json"):
+                # Posted date → days ago
+                posted = item.get("metadata", {}).get("newPostingDate", "")
+                days_ago = None
+                if posted:
                     try:
-                        ld_data = _json.loads(script.string or "")
-                        if isinstance(ld_data, dict) and ld_data.get("@type") == "ItemList":
-                            for item in ld_data.get("itemListElement", []):
-                                job_posting = item if item.get("@type") == "JobPosting" else item.get("item", {})
-                                if job_posting.get("title"):
-                                    jobs.append({
-                                        "role": job_posting.get("title", ""),
-                                        "company": (job_posting.get("hiringOrganization", {}) or {}).get("name", ""),
-                                        "url": job_posting.get("url", ""),
-                                        "location": (job_posting.get("jobLocation", [{}]) or [{}])[0].get("address", {}).get("addressLocality", location) if isinstance(job_posting.get("jobLocation"), list) else location,
-                                        "jd": (job_posting.get("description", "") or "")[:2000],
-                                        "platform": "Indeed",
-                                        "postedDaysAgo": None,
-                                    })
+                        pd = _dt.datetime.strptime(posted[:10], "%Y-%m-%d")
+                        days_ago = (_dt.datetime.now() - pd).days
                     except Exception:
-                        continue
+                        pass
 
-                # Fallback: Parse HTML cards
-                if not jobs:
-                    cards = soup.select("div.job_seen_beacon, div.cardOutline, div[class*='result'], td.resultContent")
-                    for card in cards[:30]:
-                        try:
-                            title_el = card.select_one("h2.jobTitle a, h2 a, a[data-jk], span[id*='jobTitle']")
-                            if not title_el:
-                                title_el = card.select_one("a[class*='title'], h2 span")
-                            title = title_el.get_text(strip=True) if title_el else ""
-                            href = ""
-                            if title_el:
-                                if title_el.name == "a" and title_el.get("href"):
-                                    href = title_el["href"]
-                                    if href.startswith("/"):
-                                        href = f"https://sg.indeed.com{href}"
-                                elif title_el.get("data-jk"):
-                                    href = f"https://sg.indeed.com/viewjob?jk={title_el['data-jk']}"
-                                else:
-                                    parent_a = title_el.find_parent("a")
-                                    if parent_a and parent_a.get("href"):
-                                        href = parent_a["href"]
-                                        if href.startswith("/"):
-                                            href = f"https://sg.indeed.com{href}"
+                if title:
+                    jobs.append({
+                        "role": title,
+                        "company": company,
+                        "url": url,
+                        "location": "Singapore",
+                        "jd": desc_text,
+                        "salary": salary_str,
+                        "platform": "MyCareersFuture",
+                        "postedDaysAgo": days_ago,
+                    })
 
-                            company_el = card.select_one("[data-testid='company-name'], span.companyName, span[class*='company']")
-                            company = company_el.get_text(strip=True) if company_el else ""
-
-                            loc_el = card.select_one("[data-testid='text-location'], div.companyLocation")
-                            job_loc = loc_el.get_text(strip=True) if loc_el else location
-
-                            snippet_el = card.select_one("div.job-snippet, ul[style], div[class*='snippet']")
-                            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
-
-                            if title:
-                                jobs.append({
-                                    "role": title,
-                                    "company": company,
-                                    "url": href,
-                                    "location": job_loc,
-                                    "jd": snippet[:2000],
-                                    "platform": "Indeed",
-                                    "postedDaysAgo": None,
-                                })
-                        except Exception:
-                            continue
-
-                if jobs:
-                    break  # Got results from this domain, no need to try next
-            except Exception:
-                continue
+            # Filter by max_days if we have date info
+            if max_days and jobs:
+                jobs = [j for j in jobs if j.get("postedDaysAgo") is None or j["postedDaysAgo"] <= max_days]
 
     except Exception as e:
         return jobs, str(e)
@@ -1900,116 +1861,63 @@ def _scrape_indeed(keywords, location, max_days):
     return jobs, None
 
 
-def _scrape_jobstreet(keywords, location, max_days):
-    """Scrape JobStreet using their GraphQL API endpoint."""
+def _scrape_linkedin_guest(keywords, location, max_days):
+    """Scrape LinkedIn using the public guest Jobs API (no auth needed, paginated)."""
     jobs = []
     try:
-        query = keywords
-        # JobStreet (now part of SEEK) uses a GraphQL API
-        api_url = "https://xapi.supercharge-srp.co/job-search/graphql?country=sg&is498=true"
-
-        payload = {
-            "query": "query getJobs($keyword: String, $jobFunctions: [Int], $locations: [Int], $salaryType: Int, $salaryRange: [Int], $careerLevels: [Int], $page: Int, $country: String, $sort: String, $dateRange: String) { jobs(keyword: $keyword, jobFunctions: $jobFunctions, locations: $locations, salaryType: $salaryType, salaryRange: $salaryRange, careerLevels: $careerLevels, page: $page, country: $country, sort: $sort, dateRange: $dateRange) { total jobs { id jobTitle company { name } jobLocation { location } salary { min max type currency } jobUrl postedAt descriptions { items { text } } } } }",
-            "variables": {
-                "keyword": query,
-                "country": "sg",
-                "page": 1,
-                "sort": "date",
-                "dateRange": f"{max_days}d"
-            }
-        }
+        from bs4 import BeautifulSoup
+        query = urllib.parse.quote_plus(keywords)
+        loc = urllib.parse.quote_plus(location)
+        time_filter = "r86400" if max_days <= 1 else "r604800" if max_days <= 7 else "r2592000"
 
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Origin": "https://www.jobstreet.com.sg",
-            "Referer": "https://www.jobstreet.com.sg/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html",
         }
 
-        # Try GraphQL API first
-        try:
-            resp = http_requests.post(api_url, json=payload, headers=headers, timeout=15)
-            if resp.status_code == 200:
-                data = resp.json()
-                job_items = data.get("data", {}).get("jobs", {}).get("jobs", [])
-                for item in job_items[:30]:
-                    title = item.get("jobTitle", "")
-                    company = (item.get("company") or {}).get("name", "")
-                    loc_info = item.get("jobLocation", {})
-                    job_loc = loc_info.get("location", location) if isinstance(loc_info, dict) else location
-                    job_url = item.get("jobUrl", "")
-                    if job_url and not job_url.startswith("http"):
-                        job_url = f"https://www.jobstreet.com.sg{job_url}"
-                    desc_items = (item.get("descriptions") or {}).get("items", [])
-                    jd = " ".join([d.get("text", "") for d in desc_items])[:2000] if desc_items else ""
-
-                    if title:
-                        jobs.append({
-                            "role": title,
-                            "company": company,
-                            "url": job_url,
-                            "location": job_loc if isinstance(job_loc, str) else location,
-                            "jd": jd,
-                            "platform": "JobStreet",
-                            "postedDaysAgo": None,
-                        })
-        except Exception:
-            pass
-
-        # Fallback: scrape HTML
-        if not jobs:
-            from bs4 import BeautifulSoup
-            fallback_url = f"https://www.jobstreet.com.sg/{urllib.parse.quote_plus(keywords).replace('+', '-').lower()}-jobs"
+        # LinkedIn guest API returns 10 per page — fetch 3 pages = 30 jobs
+        for start in [0, 10, 20]:
             try:
-                resp = http_requests.get(fallback_url, headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                    "Accept": "text/html",
-                }, timeout=15, allow_redirects=True)
+                url = (f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+                       f"?keywords={query}&location={loc}&f_TPR={time_filter}&start={start}")
+                resp = http_requests.get(url, headers=headers, timeout=15)
+                if resp.status_code != 200:
+                    continue
                 soup = BeautifulSoup(resp.text, "html.parser")
-
-                # Try to find JSON-LD structured data
-                for script in soup.find_all("script", type="application/ld+json"):
+                cards = soup.select("div.base-card, li.result-card, div.job-search-card")
+                for card in cards:
                     try:
-                        ld_data = json.loads(script.string or "")
-                        if isinstance(ld_data, dict) and ld_data.get("@type") == "ItemList":
-                            for item in ld_data.get("itemListElement", []):
-                                jp = item if item.get("@type") == "JobPosting" else item.get("item", {})
-                                if jp.get("title"):
-                                    jobs.append({
-                                        "role": jp.get("title", ""),
-                                        "company": (jp.get("hiringOrganization", {}) or {}).get("name", ""),
-                                        "url": jp.get("url", ""),
-                                        "location": location,
-                                        "jd": (jp.get("description", "") or "")[:2000],
-                                        "platform": "JobStreet",
-                                        "postedDaysAgo": None,
-                                    })
+                        title_el = card.select_one("h3.base-search-card__title, h3[class*='title']")
+                        title = title_el.get_text(strip=True) if title_el else ""
+                        company_el = card.select_one("h4.base-search-card__subtitle, a[class*='company']")
+                        company = company_el.get_text(strip=True) if company_el else ""
+                        link_el = card.select_one("a.base-card__full-link, a[class*='job-card']")
+                        href = link_el.get("href", "") if link_el else ""
+                        loc_el = card.select_one("span.job-search-card__location")
+                        job_loc = loc_el.get_text(strip=True) if loc_el else location
+                        time_el = card.select_one("time")
+                        days_ago = None
+                        if time_el and time_el.get("datetime"):
+                            try:
+                                pd = _dt.datetime.strptime(time_el["datetime"][:10], "%Y-%m-%d")
+                                days_ago = (_dt.datetime.now() - pd).days
+                            except Exception:
+                                pass
+
+                        if title:
+                            jobs.append({
+                                "role": title,
+                                "company": company,
+                                "url": href.split("?")[0] if href else "",
+                                "location": job_loc,
+                                "jd": "",
+                                "platform": "LinkedIn+",
+                                "postedDaysAgo": days_ago,
+                            })
                     except Exception:
                         continue
-
-                # Fallback: parse links
-                if not jobs:
-                    all_links = soup.select("a[href*='/job/'], a[href*='/jobs-']")
-                    seen = set()
-                    for link in all_links[:30]:
-                        href = link.get("href", "")
-                        if href not in seen:
-                            seen.add(href)
-                            title_text = link.get_text(strip=True)
-                            if 3 < len(title_text) < 200:
-                                full_url = href if href.startswith("http") else f"https://www.jobstreet.com.sg{href}"
-                                jobs.append({
-                                    "role": title_text,
-                                    "company": "",
-                                    "url": full_url,
-                                    "location": location,
-                                    "jd": "",
-                                    "platform": "JobStreet",
-                                    "postedDaysAgo": None,
-                                })
             except Exception:
-                pass
+                continue
 
     except Exception as e:
         return jobs, str(e)
@@ -2174,76 +2082,73 @@ def _scrape_linkedin_public(keywords, location, max_days):
     return jobs, None
 
 
-def _scrape_glassdoor(keywords, location, max_days):
-    """Search Glassdoor job listings."""
+def _scrape_mcf_extended(keywords, location, max_days):
+    """Second MCF search with broader keywords (e.g. 'Business Analyst') for more coverage."""
     jobs = []
     try:
-        query = urllib.parse.quote_plus(keywords)
-        url = f"https://www.glassdoor.com/Job/singapore-{query.replace('+', '-').lower()}-jobs-SRCH_IL.0,9_IC3235921_KO10,{10+len(keywords)}.htm?fromAge={max_days}"
+        # Use related keywords to broaden results
+        related_searches = [
+            keywords.replace("Product Owner", "Business Analyst"),
+            keywords.replace("Product Owner", "Scrum Master"),
+        ]
+        # Only use alternates if they differ from original
+        related_searches = [s for s in related_searches if s.lower() != keywords.lower()]
+        if not related_searches:
+            related_searches = [f"{keywords} digital"]
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html",
-        }
+        for search_term in related_searches[:2]:
+            query = urllib.parse.quote_plus(search_term)
+            api_url = f"https://api.mycareersfuture.gov.sg/v2/jobs?search={query}&limit=25&page=0&sortBy=new_posting_date"
 
-        from bs4 import BeautifulSoup
-        resp = http_requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
+            try:
+                resp = http_requests.get(api_url, headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json",
+                }, timeout=15)
 
-            # Try JSON-LD structured data
-            for script in soup.find_all("script", type="application/ld+json"):
-                try:
-                    ld_data = json.loads(script.string or "")
-                    if isinstance(ld_data, list):
-                        for item in ld_data:
-                            if item.get("@type") == "JobPosting":
-                                jobs.append({
-                                    "role": item.get("title", ""),
-                                    "company": (item.get("hiringOrganization", {}) or {}).get("name", ""),
-                                    "url": item.get("url", ""),
-                                    "location": location,
-                                    "jd": (item.get("description", "") or "")[:2000],
-                                    "platform": "Glassdoor",
-                                    "postedDaysAgo": None,
-                                })
-                    elif isinstance(ld_data, dict) and ld_data.get("@type") == "JobPosting":
-                        jobs.append({
-                            "role": ld_data.get("title", ""),
-                            "company": (ld_data.get("hiringOrganization", {}) or {}).get("name", ""),
-                            "url": ld_data.get("url", ""),
-                            "location": location,
-                            "jd": (ld_data.get("description", "") or "")[:2000],
-                            "platform": "Glassdoor",
-                            "postedDaysAgo": None,
-                        })
-                except Exception:
-                    continue
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("results", []):
+                        title = item.get("title", "")
+                        company = (item.get("postedCompany") or {}).get("name", "")
+                        url = item.get("metadata", {}).get("jobDetailsUrl", "")
+                        if not url and item.get("uuid"):
+                            url = f"https://www.mycareersfuture.gov.sg/job/{item['uuid']}"
 
-            # Fallback: parse job cards
-            if not jobs:
-                cards = soup.select("li.react-job-listing, div[data-test='jobListing']")
-                for card in cards[:30]:
-                    try:
-                        title_el = card.select_one("a[data-test='job-link'], a.jobLink")
-                        title = title_el.get_text(strip=True) if title_el else ""
-                        href = title_el.get("href", "") if title_el else ""
-                        if href and not href.startswith("http"):
-                            href = f"https://www.glassdoor.com{href}"
-                        company_el = card.select_one("div.job-search-key-l2wjgv, span.EmployerProfile")
-                        company = company_el.get_text(strip=True) if company_el else ""
-                        if title:
+                        sal = item.get("salary", {})
+                        salary_str = ""
+                        if isinstance(sal, dict):
+                            sal_min = sal.get("minimum", "")
+                            sal_max = sal.get("maximum", "")
+                            if sal_min:
+                                salary_str = f"${sal_min}-${sal_max}"
+
+                        desc_html = item.get("description", "") or ""
+                        from bs4 import BeautifulSoup
+                        desc_text = BeautifulSoup(desc_html, "html.parser").get_text(separator=" ", strip=True)[:4000]
+
+                        posted = item.get("metadata", {}).get("newPostingDate", "")
+                        days_ago = None
+                        if posted:
+                            try:
+                                pd = _dt.datetime.strptime(posted[:10], "%Y-%m-%d")
+                                days_ago = (_dt.datetime.now() - pd).days
+                            except Exception:
+                                pass
+
+                        if title and (days_ago is None or days_ago <= max_days):
                             jobs.append({
                                 "role": title,
                                 "company": company,
-                                "url": href,
-                                "location": location,
-                                "jd": "",
-                                "platform": "Glassdoor",
-                                "postedDaysAgo": None,
+                                "url": url,
+                                "location": "Singapore",
+                                "jd": desc_text,
+                                "salary": salary_str,
+                                "platform": "MCF+",
+                                "postedDaysAgo": days_ago,
                             })
-                    except Exception:
-                        continue
+            except Exception:
+                continue
 
     except Exception as e:
         return jobs, str(e)
@@ -2314,14 +2219,14 @@ def discover_jobs():
     keywords = data.get("keywords", "Product Owner")
     location = data.get("location", "Singapore")
     max_days = data.get("maxDays", 30)
-    platforms = data.get("platforms", ["indeed", "jobstreet", "workable", "linkedin", "glassdoor"])
+    platforms = data.get("platforms", ["mycareersfuture", "linkedin_guest", "workable", "linkedin", "mcf_extended"])
 
     scrapers = {
-        "indeed": _scrape_indeed,
-        "jobstreet": _scrape_jobstreet,
+        "mycareersfuture": _scrape_mycareersfuture,
+        "linkedin_guest": _scrape_linkedin_guest,
         "workable": _scrape_workable,
         "linkedin": _scrape_linkedin_public,
-        "glassdoor": _scrape_glassdoor,
+        "mcf_extended": _scrape_mcf_extended,
     }
 
     all_jobs = []
@@ -2792,7 +2697,7 @@ def _send_agent_notifications(summary):
 def agent_autonomous_pipeline(config=None):
     """
     Fully autonomous agentic workflow:
-      Step 1: Discover new jobs from Indeed/JobStreet/Workable
+      Step 1: Discover new jobs from MCF/LinkedIn/Workable
       Step 2: Scrape LinkedIn saved jobs (if credentials available)
       Step 3: Merge & deduplicate all discovered jobs into Supabase
       Step 4: AI-score all unscored jobs
@@ -2815,14 +2720,16 @@ def agent_autonomous_pipeline(config=None):
     keywords = config.get("keywords", P.get("headline", "Product Manager"))
     location = config.get("location", "Singapore")
     max_days = config.get("max_days", 30)
-    platforms = config.get("platforms", ["indeed", "jobstreet", "workable"])
+    platforms = config.get("platforms", ["mycareersfuture", "linkedin_guest", "workable"])
 
     if platforms:
         from concurrent.futures import ThreadPoolExecutor
         scraper_map = {
-            "indeed": _scrape_indeed,
-            "jobstreet": _scrape_jobstreet,
+            "mycareersfuture": _scrape_mycareersfuture,
+            "linkedin_guest": _scrape_linkedin_guest,
             "workable": _scrape_workable,
+            "mcf_extended": _scrape_mcf_extended,
+            "linkedin": _scrape_linkedin_public,
         }
         log(f"Step 1: Discovering jobs — keywords='{keywords}', location='{location}', platforms={platforms}")
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -2965,7 +2872,7 @@ def agent_autonomous_route():
         "keywords": data.get("keywords", ""),
         "location": data.get("location", "Singapore"),
         "max_days": data.get("max_days", 30),
-        "platforms": data.get("platforms", ["indeed", "jobstreet", "workable"]),
+        "platforms": data.get("platforms", ["mycareersfuture", "linkedin_guest", "workable"]),
     }
 
     def bg():
@@ -3241,7 +3148,7 @@ def _get_linkedin_password(): return get_setting("LINKEDIN_PASSWORD")
 
 
 def _make_selenium_driver():
-    """Create a headless Chrome driver that works on Render."""
+    """Create a headless Chrome driver that works on Render (needs Aptfile with google-chrome-stable)."""
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.chrome.service import Service
@@ -3260,9 +3167,18 @@ def _make_selenium_driver():
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
-    # Try system Chrome first (Render has it pre-installed), then webdriver-manager
-    import shutil
-    chrome_path = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium-browser") or shutil.which("chromium")
+    # Try system Chrome — Render installs via Aptfile to /usr/bin/google-chrome-stable
+    import shutil, os
+    candidates = [
+        os.environ.get("GOOGLE_CHROME_BIN"),
+        shutil.which("google-chrome-stable"),
+        shutil.which("google-chrome"),
+        shutil.which("chromium-browser"),
+        shutil.which("chromium"),
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+    ]
+    chrome_path = next((c for c in candidates if c and os.path.isfile(c)), None)
     if chrome_path:
         opts.binary_location = chrome_path
         try:

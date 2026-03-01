@@ -505,11 +505,11 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .discovery-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-glow); transform: translateY(-2px); }
 .discovery-card:hover::before { opacity: 1; }
 .discovery-platform { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.platform-indeed { background: rgba(6,182,212,0.12); color: #22d3ee; }
-.platform-jobstreet { background: rgba(236,72,153,0.12); color: #f472b6; }
+.platform-mycareersfuture, .platform-mcf { background: rgba(6,182,212,0.12); color: #22d3ee; }
+.platform-linkedin\+, .platform-linkedin_guest { background: rgba(236,72,153,0.12); color: #f472b6; }
 .platform-workable { background: rgba(16,185,129,0.12); color: #34d399; }
 .platform-linkedin { background: rgba(99,102,241,0.12); color: #818cf8; }
-.platform-glassdoor { background: rgba(245,158,11,0.12); color: #fbbf24; }
+.platform-mcf\+ { background: rgba(245,158,11,0.12); color: #fbbf24; }
 /* FADE-IN */
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .tab-content.active { animation: fadeInUp 0.3s ease-out; }
@@ -856,10 +856,9 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <div class="section-label">Quick Launch by Board</div>
  <div class="boards-grid">
  <button class="job-board-btn" onclick="openBoard('linkedin')">LinkedIn</button>
- <button class="job-board-btn" onclick="openBoard('indeed')">Indeed SG</button>
- <button class="job-board-btn" onclick="openBoard('glassdoor')">Glassdoor</button>
+ <button class="job-board-btn" onclick="openBoard('mcf')">MyCareersFuture</button>
  <button class="job-board-btn" onclick="openBoard('nodeflair')">NodeFlair</button>
- <button class="job-board-btn" onclick="openBoard('jobstreet')">Jobstreet</button>
+ <button class="job-board-btn" onclick="openBoard('workable')">Workable</button>
  </div>
  <div class="divider"></div>
  <div class="section-label">Today's Target Companies</div>
@@ -989,8 +988,8 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <div class="form-group">
  <label>Platforms</label>
  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
- <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatIndeed" checked>Indeed</label>
- <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatJobStreet" checked>JobStreet</label>
+ <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatMCF" checked>MyCareersFuture</label>
+ <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatLinkedInGuest" checked>LinkedIn+</label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatWorkable" checked>Workable</label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatLinkedIn" checked>LinkedIn</label>
  </div>
@@ -1030,10 +1029,10 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <label>Platforms</label>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
- <input type="checkbox" id="discPlatIndeed" checked>Indeed
+ <input type="checkbox" id="discPlatMCF" checked>MyCareersFuture
  </label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
- <input type="checkbox" id="discPlatJobStreet" checked>JobStreet
+ <input type="checkbox" id="discPlatLinkedInGuest" checked>LinkedIn+
  </label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
  <input type="checkbox" id="discPlatWorkable" checked>Workable
@@ -1042,7 +1041,7 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <input type="checkbox" id="discPlatLinkedIn" checked>LinkedIn
  </label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
- <input type="checkbox" id="discPlatGlassdoor" checked>Glassdoor
+ <input type="checkbox" id="discPlatMCFExt" checked>MCF+
  </label>
  </div>
  </div>
@@ -1078,7 +1077,7 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  </div>
  <div id="discoveryEmpty" style="text-align:center;padding:60px 20px;color:var(--gray-400);">
  <div style="font-size:48px;margin-bottom:12px;"></div>
- <div style="font-size:14px;">Search for jobs across Indeed, JobStreet, Workable, LinkedIn & Glassdoor</div>
+ <div style="font-size:14px;">Search for jobs across MyCareersFuture, LinkedIn, Workable & more</div>
  <div style="font-size:12px;margin-top:6px;">Results will be AI-scored and sorted by fit</div>
  </div>
  <!-- Target Companies + Quick Launch -->
@@ -1090,10 +1089,9 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <div class="section-label">Quick Launch by Board</div>
  <div class="boards-grid">
  <button class="job-board-btn" onclick="openBoard('linkedin')">LinkedIn</button>
- <button class="job-board-btn" onclick="openBoard('indeed')">Indeed SG</button>
- <button class="job-board-btn" onclick="openBoard('glassdoor')">Glassdoor</button>
+ <button class="job-board-btn" onclick="openBoard('mcf')">MyCareersFuture</button>
  <button class="job-board-btn" onclick="openBoard('nodeflair')">NodeFlair</button>
- <button class="job-board-btn" onclick="openBoard('jobstreet')">Jobstreet</button>
+ <button class="job-board-btn" onclick="openBoard('workable')">Workable</button>
  </div>
  </div>
  <!-- Application Kit Generator -->
@@ -1216,11 +1214,10 @@ input[type="checkbox"] { accent-color: var(--accent-purple); }
  <div class="form-group">
  <label>Platforms</label>
  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
- <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatIndeed" checked>Indeed</label>
- <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatJobStreet" checked>JobStreet</label>
+ <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatMCF" checked>MyCareersFuture</label>
+ <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatLinkedInGuest" checked>LinkedIn+</label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatWorkable" checked>Workable</label>
  <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatLinkedIn" checked>LinkedIn</label>
- <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatGlassdoor" checked>Glassdoor</label>
  </div>
  </div>
  <button class="btn btn-primary" onclick="runAutonomousAgent()" id="autoAgentBtn" style="width:100%;padding:14px;font-size:14px;">Run Full Autonomous Pipeline
@@ -3060,10 +3057,8 @@ function launchJobSearch() {
  const q = encodeURIComponent([role, kw, exp, "Singapore"].filter(Boolean).join(" "));
  const boards = [
  `https://www.linkedin.com/jobs/search/?keywords=${q}&location=${encodeURIComponent(loc)}&f_E=4`,
- `https://sg.indeed.com/jobs?q=${q}&l=${encodeURIComponent(loc)}`,
- `https://www.glassdoor.sg/Job/singapore-${encodeURIComponent(role.toLowerCase())}-jobs-SRCH_IL.0,9_IC3235921_KO10,${10+role.length}.htm`,
- `https://nodeflair.com/jobs?query=${q}`,
- `https://www.jobstreet.com.sg/${encodeURIComponent(role.toLowerCase().replace(/ /g,"-"))}-jobs`
+ `https://www.mycareersfuture.gov.sg/search?search=${q}&sortBy=new_posting_date&page=0`,
+ `https://nodeflair.com/jobs?query=${q}`
  ];
  boards.forEach(url => window.open(url, "_blank"));
  toast("Opening all job boards!", "success");
@@ -3073,10 +3068,9 @@ function openBoard(board) {
  const q = encodeURIComponent(role + " Singapore");
  const urls = {
  linkedin: `https://www.linkedin.com/jobs/search/?keywords=${q}&location=Singapore`,
- indeed: `https://sg.indeed.com/jobs?q=${q}&l=Singapore`,
- glassdoor: `https://www.glassdoor.sg/Job/singapore-jobs-SRCH_IL.0,9_IC3235921.htm`,
+ mcf: `https://www.mycareersfuture.gov.sg/search?search=${q}&sortBy=new_posting_date&page=0`,
  nodeflair: `https://nodeflair.com/jobs?query=${q}`,
- jobstreet: `https://www.jobstreet.com.sg/jobs?q=${encodeURIComponent(role)}&l=Singapore`
+ workable: `https://jobs.workable.com/search?query=${q}&location=Singapore`
  };
  if (urls[board]) window.open(urls[board], "_blank");
 }
@@ -3132,11 +3126,11 @@ async function discoverJobs() {
  const location = document.getElementById('discoverLocation').value.trim();
  const maxDays = parseInt(document.getElementById('discoverMaxDays').value) || 30;
  const platforms = [];
- if (document.getElementById('discPlatIndeed').checked) platforms.push('indeed');
- if (document.getElementById('discPlatJobStreet').checked) platforms.push('jobstreet');
+ if (document.getElementById('discPlatMCF').checked) platforms.push('mycareersfuture');
+ if (document.getElementById('discPlatLinkedInGuest').checked) platforms.push('linkedin_guest');
  if (document.getElementById('discPlatWorkable').checked) platforms.push('workable');
  if (document.getElementById('discPlatLinkedIn')?.checked) platforms.push('linkedin');
- if (document.getElementById('discPlatGlassdoor')?.checked) platforms.push('glassdoor');
+ if (document.getElementById('discPlatMCFExt')?.checked) platforms.push('mcf_extended');
  if (!keywords) { toast('Enter job title/keywords', 'error'); return; }
  if (!platforms.length) { toast('Select at least one platform', 'error'); return; }
  const btn = document.getElementById('discoverBtn');
@@ -4110,11 +4104,10 @@ async function runAutonomousAgent() {
  logWrap.style.display = 'block';
  logContent.textContent = '>Initiating autonomous pipeline...\n';
  const platforms = [];
- if (document.getElementById('autoPlatIndeed')?.checked) platforms.push('indeed');
- if (document.getElementById('autoPlatJobStreet')?.checked) platforms.push('jobstreet');
+ if (document.getElementById('autoPlatMCF')?.checked) platforms.push('mycareersfuture');
+ if (document.getElementById('autoPlatLinkedInGuest')?.checked) platforms.push('linkedin_guest');
  if (document.getElementById('autoPlatWorkable')?.checked) platforms.push('workable');
  if (document.getElementById('autoPlatLinkedIn')?.checked) platforms.push('linkedin');
- if (document.getElementById('autoPlatGlassdoor')?.checked) platforms.push('glassdoor');
  const config = {
  keywords: document.getElementById('autoAgentKw').value.trim() || undefined,
  location: document.getElementById('autoAgentLoc').value.trim() || 'Singapore',
