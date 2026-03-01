@@ -1439,128 +1439,171 @@ def agent_status():
 
 
 
-# ─── LINKEDIN SCRAPER (Playwright) ──────────────────────────────────────────
+# ─── LINKEDIN SCRAPER (Selenium) ────────────────────────────────────────────
 
 LINKEDIN_EMAIL    = os.environ.get("LINKEDIN_EMAIL", "")
 LINKEDIN_PASSWORD = os.environ.get("LINKEDIN_PASSWORD", "")
 
+
+def _make_selenium_driver():
+    """Create a headless Chrome driver that works on Render."""
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+
+    opts = Options()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=1280,900")
+    opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+    opts.add_experimental_option("useAutomationExtension", False)
+    opts.add_argument(
+        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    # Try system Chrome first (Render has it pre-installed), then webdriver-manager
+    import shutil
+    chrome_path = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium-browser") or shutil.which("chromium")
+    if chrome_path:
+        opts.binary_location = chrome_path
+        try:
+            driver = webdriver.Chrome(options=opts)
+            return driver
+        except Exception:
+            pass
+
+    # Fallback: webdriver-manager downloads matching chromedriver
+    try:
+        from webdriver_manager.chrome import ChromeDriverManager
+        service = Service(ChromeDriverManager().install())
+        driver  = webdriver.Chrome(service=service, options=opts)
+        return driver
+    except Exception as e:
+        raise RuntimeError(f"Could not start Chrome: {e}")
+
+
 def linkedin_scrape_saved_jobs():
     """
-    Logs into LinkedIn with stored credentials using Playwright (headless Chromium).
-    Scrapes all saved jobs from /my-items/saved-jobs/ and returns list of job dicts.
-    Returns (jobs_list, error_message). On success error_message is None.
+    Logs into LinkedIn with stored credentials using Selenium (headless Chrome).
+    Scrapes saved jobs from /my-items/saved-jobs/ including job descriptions.
+    Returns (jobs_list, error_message).
     """
+    import re, time, datetime as dt
+
     if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
         return [], "LINKEDIN_EMAIL or LINKEDIN_PASSWORD env vars not set"
 
     try:
-        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.common.exceptions import TimeoutException, NoSuchElementException
     except ImportError:
-        return [], "Playwright not installed — run: pip install playwright && playwright install chromium"
+        return [], "selenium not installed"
 
-    jobs = []
+    def _wait(driver, secs=2):
+        time.sleep(secs)
+
+    def _scroll_down(driver, steps=8):
+        for _ in range(steps):
+            driver.execute_script("window.scrollBy(0, 600)")
+            time.sleep(0.35)
+        driver.execute_script("window.scrollTo(0, 0)")
+        time.sleep(0.5)
+
+    jobs  = []
     error = None
+    driver = None
 
     try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled",
-                ]
-            )
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 900},
-                locale="en-US",
-            )
-            page = context.new_page()
+        driver = _make_selenium_driver()
+        wait   = WebDriverWait(driver, 20)
 
-            # ── Step 1: Login ──
-            print("[LinkedIn] Navigating to login page...")
-            page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30000)
-            page.fill("#username", LINKEDIN_EMAIL)
-            page.fill("#password", LINKEDIN_PASSWORD)
-            page.click("button[type=submit]")
+        # ── Step 1: Login ──
+        print("[LinkedIn] Navigating to login page...")
+        driver.get("https://www.linkedin.com/login")
+        wait.until(EC.presence_of_element_located((By.ID, "username")))
+        driver.find_element(By.ID, "username").send_keys(LINKEDIN_EMAIL)
+        driver.find_element(By.ID, "password").send_keys(LINKEDIN_PASSWORD)
+        driver.find_element(By.CSS_SELECTOR, "button[type=submit]").click()
 
-            # Wait for redirect away from login page
-            try:
-                page.wait_for_url(lambda u: "linkedin.com/login" not in u and "checkpoint" not in u, timeout=20000)
-            except PWTimeout:
-                # Check if we hit a security checkpoint
-                if "checkpoint" in page.url or "challenge" in page.url:
-                    browser.close()
-                    return [], "LinkedIn security checkpoint triggered — try logging in manually once to clear it"
-                if "login" in page.url:
-                    browser.close()
-                    return [], "Login failed — check LINKEDIN_EMAIL and LINKEDIN_PASSWORD env vars"
+        # Wait for redirect away from login
+        try:
+            WebDriverWait(driver, 20).until(lambda d: "linkedin.com/login" not in d.current_url)
+        except TimeoutException:
+            pass
 
-            print(f"[LinkedIn] Logged in — current URL: {page.url}")
+        cur = driver.current_url
+        if "checkpoint" in cur or "challenge" in cur:
+            return [], "LinkedIn security checkpoint triggered — log in manually once to clear it"
+        if "login" in cur:
+            return [], "Login failed — check LINKEDIN_EMAIL and LINKEDIN_PASSWORD env vars"
 
-            # ── Step 2: Navigate to saved jobs ──
-            page.goto("https://www.linkedin.com/my-items/saved-jobs/", wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(3000)
+        print(f"[LinkedIn] Logged in: {cur}")
+        _wait(driver, 2)
 
-            # ── Step 3: Scroll and scrape all pages ──
-            seen_urls = set()
-            page_num  = 1
+        # ── Step 2: Navigate to saved jobs ──
+        driver.get("https://www.linkedin.com/my-items/saved-jobs/")
+        _wait(driver, 3)
 
-            while page_num <= 30:
-                print(f"[LinkedIn] Scraping page {page_num}...")
+        # ── Step 3: Scrape pages ──
+        seen_urls = set()
+        page_num  = 1
 
-                # Scroll down to trigger lazy-loaded cards
-                for _ in range(8):
-                    page.evaluate("window.scrollBy(0, 600)")
-                    page.wait_for_timeout(350)
-                page.evaluate("window.scrollTo(0, 0)")
-                page.wait_for_timeout(500)
+        while page_num <= 30:
+            print(f"[LinkedIn] Page {page_num}...")
+            _scroll_down(driver)
 
-                # Scrape job cards — try multiple selector strategies
-                cards = page.query_selector_all("[data-chameleon-result-urn]")
-                if not cards:
-                    cards = page.query_selector_all("li.scaffold-layout__list-item, li[class*=jobs-saved-jobs__list-item], li[class*=job-card-container]")
-                if not cards:
-                    # Fallback: any li containing a jobs/view link
-                    all_li = page.query_selector_all("li")
-                    cards  = [li for li in all_li if li.query_selector("a[href*='/jobs/view/']")]
+            # Multi-strategy card detection
+            cards = driver.find_elements(By.CSS_SELECTOR, "[data-chameleon-result-urn]")
+            if not cards:
+                cards = driver.find_elements(By.CSS_SELECTOR,
+                    "li.scaffold-layout__list-item, li[class*=jobs-saved-jobs__list-item], li[class*=job-card-container]")
+            if not cards:
+                all_li = driver.find_elements(By.TAG_NAME, "li")
+                cards  = [li for li in all_li if li.find_elements(By.CSS_SELECTOR, "a[href*='/jobs/view/']")]
 
-                for card in cards:
-                    link_el = card.query_selector("a[href*='/jobs/view/']")
-                    if not link_el:
-                        continue
-                    href = (link_el.get_attribute("href") or "").split("?")[0].split("#")[0]
+            for card in cards:
+                try:
+                    link_el = card.find_element(By.CSS_SELECTOR, "a[href*='/jobs/view/']")
+                    href    = link_el.get_attribute("href").split("?")[0].split("#")[0]
                     if not href or href in seen_urls:
                         continue
                     seen_urls.add(href)
 
-                    # Extract title
+                    # Title
                     title = ""
-                    for sel in ["[class*=job-card-list__title]", "[class*=job-card__title]", "strong", "h3", "h4"]:
-                        el = card.query_selector(sel)
-                        if el:
-                            tx = (el.inner_text() or "").strip()
+                    for sel in ["[class*=job-card-list__title]","[class*=job-card__title]","strong","h3","h4"]:
+                        els = card.find_elements(By.CSS_SELECTOR, sel)
+                        for el in els:
+                            tx = (el.text or "").strip()
                             if 2 < len(tx) < 200:
                                 title = tx
                                 break
+                        if title:
+                            break
                     if not title:
-                        lines = [l.strip() for l in (card.inner_text() or "").split("\n") if 2 < len(l.strip()) < 150]
+                        lines = [l.strip() for l in (card.text or "").split("\n") if 2 < len(l.strip()) < 150]
                         title = lines[0] if lines else ""
 
-                    # Extract company
+                    # Company
                     company = "Unknown"
-                    for sel in ["[class*=job-card-container__primary-description]", "[class*=job-card-list__company-name]", "[class*=subtitle]", "[class*=company]"]:
-                        el = card.query_selector(sel)
-                        if el:
-                            cx = (el.inner_text() or "").strip()
+                    for sel in ["[class*=job-card-container__primary-description]","[class*=job-card-list__company-name]","[class*=subtitle]","[class*=company]"]:
+                        els = card.find_elements(By.CSS_SELECTOR, sel)
+                        for el in els:
+                            cx = (el.text or "").strip()
                             if 1 < len(cx) < 100 and cx != title:
                                 company = cx
                                 break
+                        if company != "Unknown":
+                            break
 
-                    li_match = __import__('re').search(r'/jobs/view/(\d+)', href)
-                    li_id    = f"li_{li_match.group(1)}" if li_match else ""
+                    li_m  = re.search(r'/jobs/view/(\d+)', href)
+                    li_id = f"li_{li_m.group(1)}" if li_m else ""
 
                     if title:
                         jobs.append({
@@ -1571,145 +1614,91 @@ def linkedin_scrape_saved_jobs():
                             "source":      "LinkedIn",
                             "status":      "saved",
                             "roleType":    "Business Analyst",
-                            "dateApplied": __import__('datetime').datetime.now().isoformat(),
+                            "dateApplied": dt.datetime.now().isoformat(),
                             "jd":          "",
                         })
+                except Exception:
+                    continue
 
-                print(f"[LinkedIn] Page {page_num}: {len(jobs)} total jobs so far")
+            print(f"[LinkedIn] Page {page_num}: {len(jobs)} total jobs")
 
-                # Next page
-                next_btn = None
-                for sel in ["button.artdeco-pagination__button--next", "button[aria-label*='Next']", "button[aria-label*='next']"]:
-                    btn = page.query_selector(sel)
-                    if btn and not btn.get_attribute("disabled"):
-                        next_btn = btn
+            # Next page button
+            next_btn = None
+            for sel in [
+                "button.artdeco-pagination__button--next",
+                "button[aria-label*='Next']",
+                "button[aria-label*='next']",
+            ]:
+                btns = driver.find_elements(By.CSS_SELECTOR, sel)
+                for b in btns:
+                    if b.is_enabled() and b.is_displayed():
+                        next_btn = b
                         break
-                if not next_btn:
-                    # Fallback: button with text "Next"
-                    for btn in page.query_selector_all("button, a[role=button]"):
-                        txt = (btn.inner_text() or btn.get_attribute("aria-label") or "").strip().lower()
-                        if txt in ("next", "next page") and not btn.get_attribute("disabled"):
-                            next_btn = btn
-                            break
-
-                if not next_btn:
-                    print("[LinkedIn] No next page button — done scraping")
+                if next_btn:
                     break
 
-                next_btn.click()
-                page.wait_for_timeout(2800)
-                page.evaluate("window.scrollTo(0, 0)")
-                page.wait_for_timeout(800)
-                page_num += 1
+            if not next_btn:
+                # Fallback: button text "Next"
+                for b in driver.find_elements(By.TAG_NAME, "button"):
+                    if b.text.strip().lower() == "next" and b.is_enabled():
+                        next_btn = b
+                        break
 
-            # ── Step 4: Fetch job descriptions for each job ──
-            print(f"[LinkedIn] Fetching JDs for {len(jobs)} jobs...")
-            for i, job in enumerate(jobs):
-                try:
-                    print(f"[LinkedIn] JD {i+1}/{len(jobs)}: {job['company']}")
-                    page.goto(job["url"], wait_until="domcontentloaded", timeout=20000)
-                    page.wait_for_timeout(2000)
+            if not next_btn:
+                print("[LinkedIn] No more pages")
+                break
 
-                    jd_text = ""
-                    for sel in ["#job-details", "[class*=jobs-description__content]", "[class*=description__content]", "[class*=jobs-box__html-content]"]:
-                        el = page.query_selector(sel)
-                        if el:
-                            txt = (el.inner_text() or "").strip()
-                            if len(txt) > 100:
-                                jd_text = txt[:4000]
-                                break
+            driver.execute_script("arguments[0].click();", next_btn)
+            _wait(driver, 3)
+            driver.execute_script("window.scrollTo(0, 0)")
+            _wait(driver, 1)
+            page_num += 1
 
-                    if not jd_text:
-                        # Fallback: find longest div with keywords
-                        for div in page.query_selector_all("div"):
-                            txt = (div.inner_text() or "").strip()
-                            if len(txt) > 300 and any(k in txt.lower() for k in ["responsibilities", "requirements", "qualifications"]):
-                                jd_text = txt[:4000]
-                                break
+        # ── Step 4: Fetch JDs ──
+        print(f"[LinkedIn] Fetching JDs for {len(jobs)} jobs...")
+        for i, job in enumerate(jobs):
+            try:
+                print(f"[LinkedIn] JD {i+1}/{len(jobs)}: {job['company']}")
+                driver.get(job["url"])
+                _wait(driver, 2)
 
-                    jobs[i]["jd"] = jd_text
-                    page.wait_for_timeout(700)  # polite delay
-                except Exception as e:
-                    print(f"[LinkedIn] JD fetch error for {job['url']}: {e}")
-                    jobs[i]["jd"] = ""
+                jd_text = ""
+                for sel in ["#job-details", "[class*=jobs-description__content]",
+                            "[class*=description__content]", "[class*=jobs-box__html-content]"]:
+                    els = driver.find_elements(By.CSS_SELECTOR, sel)
+                    if els:
+                        txt = (els[0].text or "").strip()
+                        if len(txt) > 100:
+                            jd_text = txt[:4000]
+                            break
 
-            browser.close()
-            print(f"[LinkedIn] Scrape complete — {len(jobs)} jobs, {sum(1 for j in jobs if j['jd'])} with JD")
+                if not jd_text:
+                    divs = driver.find_elements(By.TAG_NAME, "div")
+                    for d in divs:
+                        txt = (d.text or "").strip()
+                        if len(txt) > 300 and any(k in txt.lower() for k in ["responsibilities","requirements","qualifications"]):
+                            jd_text = txt[:4000]
+                            break
+
+                jobs[i]["jd"] = jd_text
+                _wait(driver, 0.7)
+            except Exception as e:
+                print(f"[LinkedIn] JD error for {job['url']}: {e}")
+                jobs[i]["jd"] = ""
+
+        print(f"[LinkedIn] Done — {len(jobs)} jobs, {sum(1 for j in jobs if j['jd'])} with JD")
 
     except Exception as e:
-        error = f"Playwright error: {str(e)}"
+        error = f"Selenium error: {str(e)}"
         print(f"[LinkedIn] ERROR: {error}")
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
     return jobs, error
-
-
-def linkedin_sync_to_supabase(scraped_jobs):
-    """
-    Merges scraped LinkedIn jobs into Supabase — deduplicates by LinkedIn job ID.
-    Returns (added_count, skipped_count, error).
-    """
-    sb = get_supabase()
-    if not sb:
-        return 0, 0, "Supabase not configured"
-
-    try:
-        existing = sb.table("jobs").select("id, url, linkedInId").execute().data or []
-    except Exception as e:
-        return 0, 0, f"Supabase fetch error: {e}"
-
-    existing_li_ids = set()
-    existing_urls   = set()
-    for j in existing:
-        if j.get("linkedInId"):
-            existing_li_ids.add(j["linkedInId"])
-        if j.get("url"):
-            existing_urls.add(j["url"].split("?")[0].rstrip("/"))
-
-    added = 0
-    skipped = 0
-    import re, datetime
-
-    for job in scraped_jobs:
-        li_id    = job.get("linkedInId", "")
-        clean_url = job.get("url", "").split("?")[0].rstrip("/")
-
-        # Dedup check
-        if li_id and li_id in existing_li_ids:
-            skipped += 1
-            continue
-        if clean_url and clean_url in existing_urls:
-            skipped += 1
-            continue
-
-        stable_id = li_id or f"bm_{int(datetime.datetime.now().timestamp()*1000)}_{added}"
-        record = {
-            "id":          stable_id,
-            "role":        job.get("role", "Unknown"),
-            "company":     job.get("company", "Unknown"),
-            "url":         clean_url,
-            "linkedInId":  li_id,
-            "source":      "LinkedIn",
-            "status":      "saved",
-            "roleType":    job.get("roleType", "Business Analyst"),
-            "jd":          job.get("jd", ""),
-            "dateApplied": job.get("dateApplied", datetime.datetime.now().isoformat()),
-            "notes":       "",
-            "isDemo":      False,
-            "aiScore":     None,
-            "aiLabel":     None,
-            "aiReason":    None,
-        }
-
-        try:
-            sb.table("jobs").insert(record).execute()
-            added += 1
-            if li_id:
-                existing_li_ids.add(li_id)
-            existing_urls.add(clean_url)
-        except Exception as e:
-            print(f"[Supabase] Insert error for {job.get('role')}: {e}")
-
-    return added, skipped, None
 
 
 @app.route("/api/linkedin/scrape", methods=["POST"])
