@@ -40,7 +40,7 @@ def call_claude(prompt):
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 2048,
+                "max_tokens": 4096,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=60
@@ -142,12 +142,173 @@ PROFILE = {
 }
 
 PRODUCT_FRAMING = """
-CRITICAL POSITIONING — She is transitioning from CONSULTING to IN-HOUSE PRODUCT roles:
-- Reframe "KPMG consultant" → "Product Owner for Loan IQ product squad"
+CRITICAL POSITIONING — The candidate is transitioning from CONSULTING to IN-HOUSE PRODUCT roles:
+- Reframe consulting experience → "Product Owner for product squad"
 - Reframe "client delivery" → "shipped product features, owned backlog, drove sprint outcomes"
 - DO NOT use: consultant, client, engagement, billable, service delivery
 - DO USE: product, squad, roadmap, discovery, iteration, user value, outcome, feature, backlog
 """
+
+
+# ─── MULTI-USER PROFILE SUPPORT ──────────────────────────────
+# Amretha's profile is hardcoded as DEFAULT_PROFILE.
+# Other users can upload their own profile via /api/profile/save.
+# get_active_profile() returns user-uploaded profile if it exists, else default.
+
+DEFAULT_PROFILE = PROFILE  # alias for clarity
+
+def get_active_profile():
+    """Return user-uploaded profile from Supabase, or fall back to hardcoded DEFAULT_PROFILE."""
+    try:
+        sb = get_supabase()
+        if sb:
+            res = sb.table("settings").select("value").eq("key", "user_profile").execute()
+            if res.data and res.data[0].get("value"):
+                custom = json.loads(res.data[0]["value"])
+                if custom.get("name"):  # valid profile must have a name
+                    return custom
+    except Exception as e:
+        print(f"[Profile] Error loading custom profile: {e}")
+    return DEFAULT_PROFILE
+
+
+def build_product_framing(profile):
+    """Generate dynamic positioning text based on user profile."""
+    name = profile.get("name", "the candidate")
+    exp = profile.get("experience", [])
+    current = exp[0] if exp else {}
+    current_company = current.get("company", "their current company")
+    return f"""
+CRITICAL POSITIONING — {name} is transitioning from CONSULTING to IN-HOUSE PRODUCT roles:
+- Reframe "{current_company} consultant" → "Product Owner for product squad"
+- Reframe "client delivery" → "shipped product features, owned backlog, drove sprint outcomes"
+- DO NOT use: consultant, client, engagement, billable, service delivery
+- DO USE: product, squad, roadmap, discovery, iteration, user value, outcome, feature, backlog
+"""
+
+
+@app.route("/api/profile/save", methods=["POST"])
+def save_profile():
+    """Save a user-uploaded profile. Expects JSON with profile fields."""
+    data = request.json or {}
+    if not data.get("name"):
+        return jsonify({"error": "Profile must include at least a name"}), 400
+
+    # Normalize the profile structure
+    profile = {
+        "name":          data.get("name", "").strip(),
+        "address":       data.get("address", "").strip(),
+        "mobile":        data.get("mobile", "").strip(),
+        "email":         data.get("email", "").strip(),
+        "linkedin":      data.get("linkedin", "").strip(),
+        "headline":      data.get("headline", "").strip(),
+        "aiProjectUrl":  data.get("aiProjectUrl", "").strip(),
+        "summary":       data.get("summary", "").strip(),
+        "skills":        data.get("skills", []),
+        "certification": data.get("certification", "").strip(),
+        "experience":    data.get("experience", []),
+        "education":     data.get("education", []),
+        "projects":      data.get("projects", []),
+    }
+
+    # If skills came as a comma-separated string, split it
+    if isinstance(profile["skills"], str):
+        profile["skills"] = [s.strip() for s in profile["skills"].split(",") if s.strip()]
+
+    try:
+        sb = get_supabase()
+        if not sb:
+            return jsonify({"error": "Supabase not configured"}), 400
+        sb.table("settings").upsert({"key": "user_profile", "value": json.dumps(profile)}, on_conflict="key").execute()
+        return jsonify({"ok": True, "message": f"Profile saved for {profile['name']}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profile/load", methods=["GET"])
+def load_profile():
+    """Load the active profile (custom or default)."""
+    profile = get_active_profile()
+    is_default = (profile.get("name") == DEFAULT_PROFILE.get("name") and
+                  profile.get("email") == DEFAULT_PROFILE.get("email"))
+    return jsonify({"profile": profile, "is_default": is_default})
+
+
+@app.route("/api/profile/reset", methods=["POST"])
+def reset_profile():
+    """Reset to default profile (Amretha's hardcoded profile)."""
+    try:
+        sb = get_supabase()
+        if sb:
+            sb.table("settings").delete().eq("key", "user_profile").execute()
+        return jsonify({"ok": True, "message": "Reset to default profile"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profile/parse-resume", methods=["POST"])
+def parse_resume_to_profile():
+    """Use AI to parse a pasted resume into structured profile JSON."""
+    data = request.json or {}
+    resume_text = data.get("resumeText", "").strip()
+    if not resume_text or len(resume_text) < 50:
+        return jsonify({"error": "Please paste a resume with at least 50 characters"}), 400
+
+    prompt = f"""Parse this resume into a structured JSON profile. Extract all information accurately.
+
+RESUME TEXT:
+{resume_text[:5000]}
+
+Return ONLY valid JSON with this exact structure (no markdown, no extra text):
+{{
+  "name": "Full Name",
+  "address": "Address if mentioned",
+  "mobile": "Phone number",
+  "email": "Email address",
+  "linkedin": "LinkedIn URL",
+  "headline": "Professional headline (e.g., 'Product Manager | Fintech | Singapore')",
+  "aiProjectUrl": "Any project/portfolio URL mentioned",
+  "summary": "Professional summary (2-3 sentences)",
+  "skills": ["Skill 1", "Skill 2", "Skill 3"],
+  "certification": "Certifications listed, comma separated",
+  "experience": [
+    {{
+      "company": "Company Name",
+      "role": "Job Title",
+      "period": "Start – End",
+      "bullets": ["Achievement/responsibility 1", "Achievement 2"],
+      "achievements": ["Key achievement 1"]
+    }}
+  ],
+  "education": [
+    {{"degree": "Degree Name", "school": "University Name", "period": "Start – End"}}
+  ],
+  "projects": [
+    {{
+      "title": "Project Name",
+      "type": "Project type",
+      "period": "Year",
+      "url": "URL if any",
+      "tech": "Technologies used",
+      "bullets": ["Description 1"]
+    }}
+  ]
+}}
+
+If a field is not found in the resume, use empty string "" or empty array [].
+Extract ALL experience entries, education, and skills mentioned."""
+
+    result = call_claude(prompt)
+    try:
+        import re
+        clean = re.sub(r'```json|```', '', result).strip()
+        m = re.search(r'\{.*\}', clean, re.DOTALL)
+        if m:
+            profile = json.loads(m.group())
+            return jsonify({"profile": profile})
+        return jsonify({"error": "Could not parse AI response into profile JSON"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Parse error: {str(e)}", "raw": result}), 500
 
 def is_ai_role(jd, role_type):
     ai_terms = ["ai", "artificial intelligence", "machine learning", "ml", "llm",
@@ -174,29 +335,41 @@ def tailor_resume():
     jd = data.get("jd", "")
     role_type = data.get("roleType", "Business Analyst")
     ai_role = is_ai_role(jd, role_type)
+    P = get_active_profile()
+    framing = build_product_framing(P)
 
-    prompt = f"""You are an expert resume writer helping candidates transition into in-house product roles.
-{PRODUCT_FRAMING}
+    prompt = f"""You are an expert ATS-optimised resume writer helping candidates transition into in-house product roles.
+{framing}
 
-Rewrite the following candidate's resume to match the job description. Target role: {role_type}.
+Rewrite the following candidate's resume to precisely match the job description. Target role: {role_type}.
 
 CANDIDATE PROFILE:
-{json.dumps(PROFILE, indent=2)}
+{json.dumps(P, indent=2)}
 
 JOB DESCRIPTION:
 {jd}
 
-{"AI ROLE DETECTED: Prominently feature the AI Project section with the live URL: " + PROFILE['aiProjectUrl'] + ". Lead Skills with AI/LLM skills." if ai_role else ""}
+{"AI ROLE DETECTED: Prominently feature the AI Project section with the live URL: " + P.get('aiProjectUrl','') + ". Lead Skills with AI/LLM skills." if ai_role else ""}
+
+ATS OPTIMISATION RULES:
+1. Mirror the exact keywords, phrases and job titles used in the JD — ATS systems do exact-match keyword scanning.
+2. Use standard section headers: "Professional Summary", "Core Skills", "Professional Experience", "Education & Certifications".
+3. Place the most relevant keywords in the first 1/3 of the resume (summary + skills) where ATS gives highest weight.
+4. Include both spelled-out terms AND acronyms (e.g. "Applicant Tracking System (ATS)").
+5. Use measurable metrics (%, $, days saved, team size) in every bullet point.
+6. Use active verbs that match JD language: Led, Drove, Delivered, Owned, Shipped, Optimised.
+7. Do NOT use tables, columns, headers/footers, or images — these break ATS parsers.
+8. Keep formatting clean: single column, standard fonts, bullet points with plain text.
 
 Write a complete ATS-optimised resume with:
-- Header (name, contact, LinkedIn, {PROFILE['aiProjectUrl'] if ai_role else ''})
-- Professional Summary (product-ownership framing, keyword-rich)
+- Header (name, contact, LinkedIn, {P.get('aiProjectUrl','') if ai_role else ''})
+- Professional Summary (keyword-rich, mirrors JD language, product-ownership framing)
 - {"AI & Innovation / Projects section (FIRST after summary for AI roles)" if ai_role else ""}
-- Core Skills
-- Professional Experience (product language throughout, real metrics)
+- Core Skills (extracted from JD + candidate's real skills, comma-separated)
+- Professional Experience (product language, real metrics, JD keywords woven naturally)
 - Education & Certifications
 
-Do not fabricate experience. Use product language, not consulting language."""
+Do not fabricate experience. Use product language, not consulting language. Every bullet must contain a measurable outcome."""
 
     result = call_claude(prompt)
     return jsonify({"result": result, "isAiRole": ai_role})
@@ -209,28 +382,44 @@ def cover_letter():
     company = data.get("company", "the company")
     ai_role = is_ai_role(jd, role_type)
 
-    prompt = f"""Write a professional 300-350 word cover letter for {PROFILE['name']} applying to {role_type} at {company}.
-{PRODUCT_FRAMING}
+    P = get_active_profile()
+    framing = build_product_framing(P)
+    # Build achievements from profile experience
+    achievements_text = ""
+    for exp in P.get('experience', []):
+        for ach in exp.get('achievements', []):
+            achievements_text += f"- {ach}\n"
+    if P.get('certification'):
+        achievements_text += f"- Certified: {P['certification']}\n"
+    if P.get('aiProjectUrl'):
+        achievements_text += f"- Personal Project: {P.get('aiProjectUrl','')}\n"
+
+    prompt = f"""Write a professional 300-350 word cover letter for {P['name']} applying to {role_type} at {company}.
+{framing}
 
 KEY ACHIEVEMENTS:
-- At KPMG: drove ~5% business value through product scope decisions
-- At KPMG: eliminated 30 man-days through automation feature
-- SAFe 6.0 certified Product Owner/Product Manager
-- Personal AI Project: Built and deployed live Trade Analysis platform using Claude Opus 4.6 — {PROFILE['aiProjectUrl']}
+{achievements_text}
 
 JOB DESCRIPTION:
 {jd}
 
-{"IMPORTANT — AI ROLE: Mention the live Trade Analysis platform (" + PROFILE['aiProjectUrl'] + ") as hard proof she ships AI products. Include the URL." if ai_role else ""}
+{"IMPORTANT — AI ROLE: Mention the project at " + P.get('aiProjectUrl','') + " as proof of hands-on AI product development. Include the URL." if ai_role else ""}
+
+ATS & RECRUITER OPTIMISATION:
+1. Mirror the EXACT job title and 5-8 key phrases from the JD in the letter.
+2. Use confident product language, not consulting jargon.
+3. Include specific metrics (5% value, 30 man-days) for credibility.
+4. Reference the company name and role title at least twice.
+5. Keep paragraphs short (3-4 sentences max) for easy scanning.
 
 Write a compelling cover letter that:
-1. Opens with a confident hook about building products, not delivering services
-2. Highlights KPMG metrics (5% value, 30 man-days)
-3. {"Mentions live AI project with URL as key differentiator" if ai_role else "Bridges consulting delivery to product ownership"}
-4. Shows genuine enthusiasm for {company}
-5. Ends with clear call to action
+1. Opens with a confident hook referencing the specific role and company, positioning as a product builder not a service provider
+2. Highlights KPMG metrics (5% value, 30 man-days) in context of what JD requires
+3. {"Mentions live AI project with URL as key differentiator" if ai_role else "Bridges consulting delivery to product ownership with specific JD alignment"}
+4. Shows genuine, specific enthusiasm for {company} — reference what they do
+5. Ends with a clear, action-oriented call to action
 
-Exactly 300-350 words. No consulting jargon. Sound like a product person."""
+Exactly 300-350 words. No consulting jargon. Sound like a product person. Weave JD keywords naturally throughout."""
 
     result = call_claude(prompt)
     return jsonify({"result": result})
@@ -242,21 +431,30 @@ def interview_prep():
     role_type = data.get("roleType", "Business Analyst")
     jd = data.get("jd", "")
 
-    prompt = f"""Generate a comprehensive interview prep guide for {PROFILE['name']} interviewing at {company} for {role_type}.
-{PRODUCT_FRAMING}
+    P = get_active_profile()
+    framing = build_product_framing(P)
+    # Build candidate summary from profile
+    exp_lines = ""
+    for exp in P.get('experience', []):
+        bullets_preview = '; '.join(exp.get('bullets', [])[:2])
+        exp_lines += f"- {exp.get('company','')} ({exp.get('period','')}): {exp.get('role','')}. {bullets_preview}\n"
+    skills_str = ', '.join(P.get('skills', [])[:12])
+    proj_url = P.get('aiProjectUrl', '')
+
+    prompt = f"""Generate a comprehensive interview prep guide for {P['name']} interviewing at {company} for {role_type}.
+{framing}
 
 CANDIDATE:
-- KPMG Singapore (Feb 2021–Present): De-facto Product Owner for Loan IQ. Drove 5% business value, saved 30 man-days through automation, led sprint-to-SIT delivery
-- J.P. Morgan (Oct 2023–Jan 2024): Portfolio KPI analysis, requirement gathering
-- Amazon India (Mar 2018–Mar 2019): Power BI dashboards, data products
-- SAFe 6.0 certified, Agile, JIRA, SQL, Tableau, Power BI
-- Built and deployed live AI Trade Analysis platform: {PROFILE['aiProjectUrl']}
+{exp_lines}
+- Certified: {P.get('certification','')}
+- Skills: {skills_str}
+{('- Project: ' + proj_url) if proj_url else ''}
 {"JD: " + jd if jd else ""}
 
 Create prep with these EXACT sections:
 
 ## 5 Behavioral Questions with STAR Answers
-For each: the question, then full STAR answer using her real experience with specific metrics.
+For each: the question, then full STAR answer using the candidate's real experience with specific metrics.
 
 ## 5 Technical Questions for {role_type}
 Questions with model answers specific to this role.
@@ -267,8 +465,8 @@ Specific actionable research areas.
 ## 5 Smart Questions to Ask the Interviewer
 Product-minded questions that signal ownership thinking.
 
-## Salary Negotiation Tip (Singapore Market)
-Specific tip for SAFe-certified PO/BA with 5+ years in Singapore fintech."""
+## Salary Negotiation Tip
+Specific tip based on the candidate's certifications and experience level."""
 
     result = call_claude(prompt)
     return jsonify({"result": result})
@@ -282,11 +480,14 @@ def full_kit():
     jd = data.get("jd", "")
     ai_role = is_ai_role(jd, role_type)
 
-    profile_str = json.dumps({k: v for k, v in PROFILE.items()}, indent=2)
+    P = get_active_profile()
+    framing = build_product_framing(P)
+    profile_str = json.dumps({k: v for k, v in P.items()}, indent=2)
+    proj_url = P.get('aiProjectUrl', '')
 
-    resume_prompt = f"Write ATS-optimised resume for {PROFILE['name']} applying to {role} at {company} ({role_type}). {PRODUCT_FRAMING} Profile: {profile_str}. JD: {jd}. {'AI role: feature project ' + PROFILE['aiProjectUrl'] + ' prominently.' if ai_role else ''}"
-    cover_prompt = f"Write 300-word cover letter for {PROFILE['name']} for {role} at {company}. Highlight: 5% KPMG value, 30 man-days saved, SAFe 6.0. {'Mention live AI project: ' + PROFILE['aiProjectUrl'] if ai_role else ''} Product language, no consulting jargon."
-    prep_prompt = f"Give top 5 interview questions for {role_type} at {company} with brief model answers for {PROFILE['name']} (KPMG PO, SAFe 6.0, AI project at {PROFILE['aiProjectUrl']}). Be specific."
+    resume_prompt = f"Write ATS-optimised resume for {P['name']} applying to {role} at {company} ({role_type}). {framing} Profile: {profile_str}. JD: {jd}. {'AI role: feature project ' + proj_url + ' prominently.' if ai_role else ''} ATS rules: mirror exact JD keywords, use standard section headers (Professional Summary, Core Skills, Professional Experience, Education), include metrics in every bullet, single-column format, no tables."
+    cover_prompt = f"Write 300-word cover letter for {P['name']} for {role} at {company}. Profile: {profile_str}. {'Mention project: ' + proj_url if ai_role else ''} Mirror key phrases from JD: {jd[:500]}. Product language, no consulting jargon. Reference company name and role at least twice."
+    prep_prompt = f"Give top 5 interview questions for {role_type} at {company} with brief model answers for {P['name']}. Profile summary: {P.get('summary','')}. JD context: {jd[:500]}. Include STAR-format answers with real metrics."
 
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -440,13 +641,18 @@ def generate_docs():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = os.path.join(BASE_DIR, "gen_docs.js")
+        # Pass active profile to gen_docs.js if it's a custom (non-default) profile
+        P = get_active_profile()
+        is_custom = (P.get("name") != DEFAULT_PROFILE.get("name") or
+                     P.get("email") != DEFAULT_PROFILE.get("email"))
         payload = json_lib.dumps({
             "role": role,
             "company": company,
             "jd": jd[:3000] if jd else "",
             "roleType": role_type,
             "outputDir": tmpdir,
-            "isAI": is_ai
+            "isAI": is_ai,
+            "profile": P if is_custom else None
         })
 
         try:
@@ -631,22 +837,30 @@ JOB {i+1}:
   JD: {jd_snippet if jd_snippet else "No JD provided"}
 ---"""
 
-    prompt = f"""You are a career coach expert in Singapore's tech and fintech product job market.
+    P = get_active_profile()
+    # Build dynamic candidate profile text for scoring
+    exp_summary_lines = ""
+    for exp in P.get('experience', []):
+        achvs = '; '.join(exp.get('achievements', [])[:2])
+        exp_summary_lines += f"- {exp.get('company','')}: {exp.get('role','')} ({exp.get('period','')})"
+        if achvs:
+            exp_summary_lines += f" — {achvs}"
+        exp_summary_lines += "\n"
+    skills_str = ', '.join(P.get('skills', [])[:12])
+    proj_url = P.get('aiProjectUrl', '')
+
+    prompt = f"""You are a career coach expert in the tech and product job market.
 
 CANDIDATE PROFILE:
-Name: Amretha Karthikeyan
-Current: Lead BA / de-facto Product Owner at KPMG Singapore (Feb 2021–Present)
-- Owned Loan IQ core banking product backlog, led cross-functional squads (eng, UX, QA)
-- Drove ~5% business value through product scope decisions
-- Eliminated 30 man-days via automation feature
-- Led sprint ceremonies, PI Planning, go-live planning, data migrations
-Certification: SAFe 6.0 Product Owner / Product Manager
-Skills: Agile, JIRA, SQL, Tableau, Power BI, Loan IQ, Stakeholder Management, Generative AI, Claude API
-Previous: Amazon India (BA, dashboards), J.P. Morgan virtual internship
-Personal project: Live AI Trade Analysis platform (Claude Opus 4.6) — proves she ships AI products
-Target: In-house product roles in Singapore (NOT consulting) — PM, PO, BA at fintech/tech companies
-Experience: 5+ years total
-Transition: Consulting → In-house product
+Name: {P.get('name', 'Unknown')}
+Headline: {P.get('headline', '')}
+Summary: {P.get('summary', '')}
+Experience:
+{exp_summary_lines}
+Certification: {P.get('certification', '')}
+Skills: {skills_str}
+{'Personal project: ' + proj_url if proj_url else ''}
+Target: In-house product roles (NOT consulting) — PM, PO, BA at fintech/tech companies
 
 JOBS TO EVALUATE:
 {job_list}
@@ -1082,6 +1296,491 @@ def capture_bulk():
 
 
 # ═══════════════════════════════════════════════════════════════
+# JOB DISCOVERY — Scrape Indeed, JobStreet, Workable
+# ═══════════════════════════════════════════════════════════════
+
+import urllib.parse
+import re as _re
+import datetime as _dt
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def _scrape_indeed(keywords, location, max_days):
+    """Scrape Indeed Singapore job listings."""
+    from bs4 import BeautifulSoup
+
+    query = urllib.parse.quote_plus(keywords)
+    loc = urllib.parse.quote_plus(location)
+    # fromage param limits by days old
+    url = f"https://sg.indeed.com/jobs?q={query}&l={loc}&fromage={max_days}&sort=date"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    jobs = []
+    try:
+        resp = http_requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Indeed uses various card selectors
+        cards = soup.select("div.job_seen_beacon, div.cardOutline, div[class*='result']")
+        if not cards:
+            cards = soup.select("td.resultContent, div.slider_container")
+
+        for card in cards[:30]:
+            try:
+                title_el = card.select_one("h2.jobTitle a, h2 a, a[data-jk]")
+                title = title_el.get_text(strip=True) if title_el else ""
+                href = ""
+                if title_el and title_el.get("href"):
+                    href = "https://sg.indeed.com" + title_el["href"] if title_el["href"].startswith("/") else title_el["href"]
+                elif title_el and title_el.get("data-jk"):
+                    href = f"https://sg.indeed.com/viewjob?jk={title_el['data-jk']}"
+
+                company_el = card.select_one("[data-testid='company-name'], span.companyName, span[class*='company']")
+                company = company_el.get_text(strip=True) if company_el else ""
+
+                loc_el = card.select_one("[data-testid='text-location'], div.companyLocation, span[class*='location']")
+                job_loc = loc_el.get_text(strip=True) if loc_el else location
+
+                # Snippet as partial JD
+                snippet_el = card.select_one("div.job-snippet, td.snip, [class*='snippet']")
+                snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+
+                date_el = card.select_one("span.date, span[class*='date']")
+                date_text = date_el.get_text(strip=True) if date_el else ""
+
+                # Parse days ago
+                days_ago = None
+                if date_text:
+                    m = _re.search(r'(\d+)\s*day', date_text.lower())
+                    if m:
+                        days_ago = int(m.group(1))
+                    elif "just posted" in date_text.lower() or "today" in date_text.lower():
+                        days_ago = 0
+
+                if title and company:
+                    jobs.append({
+                        "role": title,
+                        "company": company,
+                        "url": href,
+                        "location": job_loc,
+                        "jd": snippet[:2000],
+                        "platform": "Indeed",
+                        "postedDaysAgo": days_ago,
+                    })
+            except Exception:
+                continue
+
+    except Exception as e:
+        return jobs, str(e)
+
+    return jobs, None
+
+
+def _scrape_jobstreet(keywords, location, max_days):
+    """Scrape JobStreet Singapore job listings."""
+    from bs4 import BeautifulSoup
+
+    query = urllib.parse.quote_plus(keywords)
+    # JobStreet Singapore URL
+    url = f"https://www.jobstreet.com.sg/jobs/{query.replace('+', '-').lower()}-jobs?createdAt={max_days}d"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    jobs = []
+    try:
+        resp = http_requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # JobStreet 2024 uses article tags or data-search-sol-meta
+        cards = soup.select("article[data-card-type='JobCard'], div[data-search-sol-meta]")
+        if not cards:
+            # Fallback: look for links that point to job details
+            cards = soup.select("div[class*='job-card'], div[class*='JobCard']")
+        if not cards:
+            # Last resort: find all links with /job/ or /jobs- pattern
+            all_links = soup.select("a[href*='/job/'], a[href*='/jobs-']")
+            # Deduplicate and create pseudo-cards
+            seen = set()
+            for link in all_links[:30]:
+                href = link.get("href", "")
+                if href not in seen:
+                    seen.add(href)
+                    title_text = link.get_text(strip=True)
+                    if 3 < len(title_text) < 200:
+                        full_url = href if href.startswith("http") else f"https://www.jobstreet.com.sg{href}"
+                        jobs.append({
+                            "role": title_text,
+                            "company": "",
+                            "url": full_url,
+                            "location": location,
+                            "jd": "",
+                            "platform": "JobStreet",
+                            "postedDaysAgo": None,
+                        })
+            return jobs, None
+
+        for card in cards[:30]:
+            try:
+                title_el = card.select_one("a[data-automation='jobTitle'], h3 a, a[class*='job-title'], h1 a")
+                if not title_el:
+                    title_el = card.select_one("a")
+                title = title_el.get_text(strip=True) if title_el else ""
+                href = ""
+                if title_el and title_el.get("href"):
+                    h = title_el["href"]
+                    href = h if h.startswith("http") else f"https://www.jobstreet.com.sg{h}"
+
+                company_el = card.select_one("[data-automation='jobCompany'], span[class*='company'], a[class*='company']")
+                company = company_el.get_text(strip=True) if company_el else ""
+
+                loc_el = card.select_one("[data-automation='jobLocation'], span[class*='location']")
+                job_loc = loc_el.get_text(strip=True) if loc_el else location
+
+                snippet_el = card.select_one("[data-automation='jobShortDescription'], span[class*='description']")
+                snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+
+                date_el = card.select_one("time, span[class*='date'], span[class*='listed']")
+                date_text = date_el.get_text(strip=True) if date_el else ""
+                days_ago = None
+                if date_text:
+                    m = _re.search(r'(\d+)\s*d', date_text.lower())
+                    if m:
+                        days_ago = int(m.group(1))
+                    elif "just" in date_text.lower() or "today" in date_text.lower():
+                        days_ago = 0
+
+                if title:
+                    jobs.append({
+                        "role": title,
+                        "company": company,
+                        "url": href,
+                        "location": job_loc,
+                        "jd": snippet[:2000],
+                        "platform": "JobStreet",
+                        "postedDaysAgo": days_ago,
+                    })
+            except Exception:
+                continue
+
+    except Exception as e:
+        return jobs, str(e)
+
+    return jobs, None
+
+
+def _scrape_workable(keywords, location, max_days):
+    """Search Workable job board for open positions."""
+    from bs4 import BeautifulSoup
+
+    query = urllib.parse.quote_plus(keywords)
+    loc = urllib.parse.quote_plus(location)
+    url = f"https://jobs.workable.com/?query={query}&location={loc}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    jobs = []
+    try:
+        resp = http_requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Workable uses various card patterns
+        cards = soup.select("[data-ui='job'], li[class*='job'], div[class*='job-listing']")
+        if not cards:
+            # Try finding links to job pages
+            all_links = soup.select("a[href*='/j/'], a[href*='/view/']")
+            seen = set()
+            for link in all_links[:30]:
+                href = link.get("href", "")
+                if href and href not in seen:
+                    seen.add(href)
+                    title_text = link.get_text(strip=True)
+                    if 3 < len(title_text) < 200:
+                        full_url = href if href.startswith("http") else f"https://jobs.workable.com{href}"
+                        jobs.append({
+                            "role": title_text,
+                            "company": "",
+                            "url": full_url,
+                            "location": location,
+                            "jd": "",
+                            "platform": "Workable",
+                            "postedDaysAgo": None,
+                        })
+            return jobs, None
+
+        for card in cards[:30]:
+            try:
+                title_el = card.select_one("h3, h2, a[class*='title']")
+                title = title_el.get_text(strip=True) if title_el else ""
+                link_el = card.select_one("a[href]")
+                href = ""
+                if link_el and link_el.get("href"):
+                    h = link_el["href"]
+                    href = h if h.startswith("http") else f"https://jobs.workable.com{h}"
+
+                company_el = card.select_one("[class*='company'], span[class*='org']")
+                company = company_el.get_text(strip=True) if company_el else ""
+
+                loc_el = card.select_one("[class*='location']")
+                job_loc = loc_el.get_text(strip=True) if loc_el else location
+
+                if title:
+                    jobs.append({
+                        "role": title,
+                        "company": company,
+                        "url": href,
+                        "location": job_loc,
+                        "jd": "",
+                        "platform": "Workable",
+                        "postedDaysAgo": None,
+                    })
+            except Exception:
+                continue
+
+    except Exception as e:
+        return jobs, str(e)
+
+    return jobs, None
+
+
+def _ai_score_discovered_jobs(jobs_list):
+    """Score discovered jobs with AI, same ranking logic as existing rank_jobs."""
+    if not jobs_list:
+        return jobs_list
+    
+    # Only score jobs that have some useful text (title/company at minimum)
+    to_score = [j for j in jobs_list if j.get("role")]
+    if not to_score:
+        return jobs_list
+
+    # Build compact job batch for AI
+    batch_text = ""
+    for i, j in enumerate(to_score[:30]):  # Limit to 30 for API limits
+        jd_snippet = (j.get("jd", "") or "")[:200]
+        batch_text += f"\nJOB {i+1}: {j.get('role','')} at {j.get('company','')} ({j.get('platform','')}) — {jd_snippet}\n---"
+
+    prompt = f"""You are a career coach for Singapore's tech product job market.
+
+CANDIDATE: Amretha Karthikeyan — Lead BA/Product Owner at KPMG Singapore, 5+ years,
+SAFe 6.0 certified, transitioning to in-house product roles (NOT consulting).
+
+SCORING:
+- Score 1-10 based on fit
+- +2 for in-house product/tech companies, -2 for consulting firms (max 4/10)
+- Score 0 if "no visa sponsorship" detected
+- Labels: 🔥 Strong Match (9-10), ✅ Good Fit (7-8), 🟡 Possible (5-6), ❌ Weak Fit (1-4)
+- Priority: Apply Today, Apply This Week, Lower Priority, Skip
+
+JOBS:
+{batch_text}
+
+Return ONLY a JSON array (no markdown), one object per job:
+[{{"idx": 0, "score": 8, "label": "✅ Good Fit", "reason": "Two sentences.", "priority": "Apply This Week"}}]
+Score every job listed. Use idx starting from 0."""
+
+    try:
+        result = call_claude(prompt)
+        clean = _re.sub(r'```json|```', '', result).strip()
+        rankings = json.loads(clean)
+        for r in rankings:
+            idx = r.get("idx", -1)
+            if 0 <= idx < len(to_score):
+                to_score[idx]["aiScore"] = r.get("score")
+                to_score[idx]["aiLabel"] = r.get("label", "")
+                to_score[idx]["aiReason"] = r.get("reason", "")
+                to_score[idx]["aiPriority"] = r.get("priority", "")
+    except Exception as e:
+        print(f"[Discovery] AI scoring failed: {e}")
+
+    return jobs_list
+
+
+@app.route("/api/discover-jobs", methods=["POST"])
+def discover_jobs():
+    """Search multiple job platforms and return AI-scored results."""
+    data = request.json or {}
+    keywords = data.get("keywords", "Product Owner")
+    location = data.get("location", "Singapore")
+    max_days = data.get("maxDays", 30)
+    platforms = data.get("platforms", ["indeed", "jobstreet", "workable"])
+
+    scrapers = {
+        "indeed": _scrape_indeed,
+        "jobstreet": _scrape_jobstreet,
+        "workable": _scrape_workable,
+    }
+
+    all_jobs = []
+    details = {}
+
+    # Scrape platforms in parallel
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+        for platform in platforms:
+            if platform in scrapers:
+                futures[executor.submit(scrapers[platform], keywords, location, max_days)] = platform
+
+        for future in as_completed(futures):
+            platform = futures[future]
+            try:
+                jobs, err = future.result(timeout=30)
+                details[platform] = {"count": len(jobs), "error": err}
+                all_jobs.extend(jobs)
+            except Exception as e:
+                details[platform] = {"count": 0, "error": str(e)}
+
+    # Deduplicate by URL
+    seen_urls = set()
+    unique_jobs = []
+    for j in all_jobs:
+        clean_url = (j.get("url") or "").split("?")[0]
+        tc = (j.get("role", "").lower() + "|" + j.get("company", "").lower())
+        if clean_url and clean_url in seen_urls:
+            continue
+        if tc in seen_urls:
+            continue
+        if clean_url:
+            seen_urls.add(clean_url)
+        seen_urls.add(tc)
+        unique_jobs.append(j)
+
+    # Filter old jobs if we have date info
+    if max_days:
+        filtered = []
+        for j in unique_jobs:
+            if j.get("postedDaysAgo") is not None:
+                if j["postedDaysAgo"] <= max_days:
+                    filtered.append(j)
+            else:
+                # No date info — keep it
+                filtered.append(j)
+        unique_jobs = filtered
+
+    # AI score the results
+    if unique_jobs:
+        unique_jobs = _ai_score_discovered_jobs(unique_jobs)
+
+    # Sort by score descending
+    unique_jobs.sort(key=lambda j: j.get("aiScore") or 0, reverse=True)
+
+    return jsonify({
+        "jobs": unique_jobs,
+        "total": len(unique_jobs),
+        "details": details
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
+# BULK AUTO-APPLY — Generate docs for multiple jobs at once
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/api/bulk-apply", methods=["POST"])
+def bulk_apply():
+    """
+    Bulk auto-apply: for each selected job that has a JD and score >= threshold,
+    generate tailored resume + cover letter .docx via gen_docs.js.
+    Returns progress updates and final summary.
+    """
+    import subprocess, tempfile, base64 as b64mod
+
+    data = request.json or {}
+    job_ids = data.get("jobIds", [])
+    if not job_ids:
+        return jsonify({"error": "No jobs selected"}), 400
+
+    # Load jobs from localStorage (sent from frontend)
+    incoming_jobs = data.get("jobs", [])
+    if not incoming_jobs:
+        return jsonify({"error": "No job data provided"}), 400
+
+    results = []
+    generated = 0
+    skipped = 0
+    errors = 0
+
+    for job in incoming_jobs:
+        job_id = str(job.get("id", ""))
+        if job_id not in [str(jid) for jid in job_ids]:
+            continue
+
+        role = job.get("role", "Unknown").strip()
+        company = job.get("company", "Unknown").strip()
+        jd = (job.get("jd") or "").strip()
+        role_type = job.get("roleType", "Business Analyst")
+
+        # Skip if docs already generated
+        if job.get("resume_docx_b64"):
+            results.append({"id": job_id, "status": "skipped", "reason": "Docs already exist"})
+            skipped += 1
+            continue
+
+        # Skip if no JD
+        if not jd or len(jd) < 50:
+            results.append({"id": job_id, "status": "skipped", "reason": "No JD available"})
+            skipped += 1
+            continue
+
+        try:
+            script_path = os.path.join(BASE_DIR, "gen_docs.js")
+            ai_role = is_ai_role(jd, role_type)
+            payload_str = json.dumps({
+                "role": role, "company": company,
+                "jd": jd[:3000], "roleType": role_type,
+                "outputDir": tempfile.gettempdir(), "isAI": ai_role
+            })
+            res = subprocess.run(
+                ["node", script_path, payload_str],
+                capture_output=True, text=True, timeout=30
+            )
+            if res.returncode == 0:
+                out = json.loads(res.stdout.strip())
+                with open(out["resume"], "rb") as f:
+                    resume_b64 = b64mod.b64encode(f.read()).decode()
+                with open(out["cover"], "rb") as f:
+                    cover_b64 = b64mod.b64encode(f.read()).decode()
+
+                results.append({
+                    "id": job_id,
+                    "status": "generated",
+                    "resume_docx_b64": resume_b64,
+                    "cover_docx_b64": cover_b64,
+                    "resume_variant": out.get("variant", "BA"),
+                    "resume_filename": f"Resume_{company.replace(' ','_')}.docx",
+                    "cover_filename": f"CoverLetter_{company.replace(' ','_')}.docx",
+                })
+                generated += 1
+            else:
+                results.append({"id": job_id, "status": "error", "reason": res.stderr[:100]})
+                errors += 1
+        except subprocess.TimeoutExpired:
+            results.append({"id": job_id, "status": "error", "reason": "Timed out"})
+            errors += 1
+        except Exception as e:
+            results.append({"id": job_id, "status": "error", "reason": str(e)[:100]})
+            errors += 1
+
+    return jsonify({
+        "results": results,
+        "generated": generated,
+        "skipped": skipped,
+        "errors": errors,
+        "total": len(job_ids)
+    })
+
+
+# ═══════════════════════════════════════════════════════════════
 # AGENT SYSTEM
 # ═══════════════════════════════════════════════════════════════
 
@@ -1134,6 +1833,34 @@ def send_email(subject, html_body):
     return send_whatsapp(msg)
 
 
+def _send_whatsapp_summary(summary):
+    """Send a concise, well-formatted WhatsApp summary after agent run."""
+    top = summary.get("top_jobs", [])
+    labels = {"import": "Import", "cron": "Daily 9AM", "manual": "Manual"}
+    trigger = labels.get(summary.get("trigger", ""), "Run")
+    now_str = datetime.datetime.now().strftime("%d %b %H:%M")
+
+    msg = f"🤖 *Job Agent Complete* — {trigger} · {now_str}\n\n"
+    msg += f"📊 *{summary['total']}* processed · *{summary['scored']}* scored · *{summary['docs']}* docs ready\n\n"
+
+    if top:
+        msg += "🏆 *Top Matches:*\n"
+        for j in top[:5]:
+            score = j.get("aiScore", "?")
+            company = j.get("company", "")
+            role = j.get("role", "")
+            priority = j.get("aiPriority", "")
+            has_docs = "📄" if j.get("resume_docx_b64") else ""
+            msg += f"• {score}/10 — {company} · {role} {has_docs}\n"
+            if priority:
+                msg += f"  → _{priority}_\n"
+    else:
+        msg += "No scored jobs yet.\n"
+
+    msg += "\n🔗 Open tracker: https://job-hunt-app-r7my.onrender.com"
+    return send_whatsapp(msg)
+
+
 def agent_process_job(job):
     """Full agent pipeline for one job: score → generate docs → save."""
     log     = []
@@ -1147,10 +1874,15 @@ def agent_process_job(job):
     # STEP 1: AI Score
     if jd and len(jd) > 50 and job.get("aiScore") is None:
         try:
-            prompt = f"""You are a career coach for Singapore's tech job market.
+            P = get_active_profile()
+            skills_short = ', '.join(P.get('skills', [])[:8])
+            prompt = f"""You are a career coach for the tech job market.
 
-CANDIDATE: Amretha Karthikeyan — Lead BA/Product Owner at KPMG Singapore, 5+ years,
-SAFe 6.0 certified, transitioning to in-house product roles (NOT consulting).
+CANDIDATE: {P.get('name','Unknown')} — {P.get('headline','')}
+Summary: {P.get('summary','')[:200]}
+Skills: {skills_short}
+Certification: {P.get('certification','')}
+Target: In-house product roles (NOT consulting).
 
 SCORING RULES:
 - Score 1-10 based on fit
@@ -1194,10 +1926,15 @@ Return ONLY valid JSON, no markdown:
             import subprocess, tempfile, base64 as b64mod
             script_path = os.path.join(BASE_DIR, "gen_docs.js")
             ai_role     = is_ai_role(jd, job.get("roleType", ""))
+            # Pass custom profile if applicable
+            P_agent = get_active_profile()
+            is_custom_agent = (P_agent.get("name") != DEFAULT_PROFILE.get("name") or
+                               P_agent.get("email") != DEFAULT_PROFILE.get("email"))
             payload_str = json.dumps({
                 "role": role, "company": company,
                 "jd": jd[:3000], "roleType": job.get("roleType", "Business Analyst"),
-                "outputDir": tempfile.gettempdir(), "isAI": ai_role
+                "outputDir": tempfile.gettempdir(), "isAI": ai_role,
+                "profile": P_agent if is_custom_agent else None
             })
             res = subprocess.run(
                 ["node", script_path, payload_str],
@@ -1344,6 +2081,197 @@ def _send_agent_notifications(summary):
         subject=f"🤖 Agent: {summary['scored']} scored, {summary['docs']} docs ready — {datetime.datetime.now().strftime('%d %b')}",
         html_body=html
     )
+
+    # Also send concise WhatsApp summary
+    _send_whatsapp_summary(summary)
+
+
+# ─── AUTONOMOUS AGENT PIPELINE ───────────────────────────────
+def agent_autonomous_pipeline(config=None):
+    """
+    Fully autonomous agentic workflow:
+      Step 1: Discover new jobs from Indeed/JobStreet/Workable
+      Step 2: Scrape LinkedIn saved jobs (if credentials available)
+      Step 3: Merge & deduplicate all discovered jobs into Supabase
+      Step 4: AI-score all unscored jobs
+      Step 5: Generate resume + cover letter for top-scoring jobs
+      Step 6: Save everything to Supabase
+      Step 7: Send WhatsApp + email notification summary
+    """
+    config = config or {}
+    pipeline_log = []
+    P = get_active_profile()
+
+    def log(msg):
+        pipeline_log.append(msg)
+        print(f"[Agent] {msg}")
+
+    log(f"🤖 Starting autonomous pipeline for {P.get('name', 'user')}")
+
+    # ── Step 1: Job Discovery from web scrapers ──
+    discovered_jobs = []
+    keywords = config.get("keywords", P.get("headline", "Product Manager"))
+    location = config.get("location", "Singapore")
+    max_days = config.get("max_days", 30)
+    platforms = config.get("platforms", ["indeed", "jobstreet", "workable"])
+
+    if platforms:
+        from concurrent.futures import ThreadPoolExecutor
+        scraper_map = {
+            "indeed": _scrape_indeed,
+            "jobstreet": _scrape_jobstreet,
+            "workable": _scrape_workable,
+        }
+        log(f"Step 1: Discovering jobs — keywords='{keywords}', location='{location}', platforms={platforms}")
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {}
+            for p_name in platforms:
+                fn = scraper_map.get(p_name)
+                if fn:
+                    futures[p_name] = pool.submit(fn, keywords, location, max_days)
+            for p_name, fut in futures.items():
+                try:
+                    results = fut.result(timeout=60)
+                    discovered_jobs.extend(results)
+                    log(f"  {p_name}: {len(results)} jobs found")
+                except Exception as e:
+                    log(f"  {p_name}: error — {str(e)[:60]}")
+
+        # Deduplicate by title+company
+        seen = set()
+        unique = []
+        for j in discovered_jobs:
+            key = f"{j.get('role','').lower().strip()}|{j.get('company','').lower().strip()}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(j)
+        discovered_jobs = unique
+        log(f"  Total unique discovered: {len(discovered_jobs)}")
+    else:
+        log("Step 1: Skipping discovery (no platforms configured)")
+
+    # ── Step 2: LinkedIn scrape ──
+    linkedin_jobs = []
+    li_email = _get_linkedin_email()
+    li_pw = _get_linkedin_password()
+    if li_email and li_pw:
+        log("Step 2: Scraping LinkedIn saved jobs...")
+        try:
+            scraped, err = linkedin_scrape_saved_jobs()
+            if err:
+                log(f"  LinkedIn error: {err}")
+            else:
+                linkedin_jobs = scraped
+                log(f"  LinkedIn: {len(scraped)} jobs found")
+        except Exception as e:
+            log(f"  LinkedIn error: {str(e)[:60]}")
+    else:
+        log("Step 2: Skipping LinkedIn (no credentials)")
+
+    # ── Step 3: Merge & sync to Supabase ──
+    all_new_jobs = discovered_jobs + linkedin_jobs
+    total_added = 0
+    total_skipped = 0
+
+    if all_new_jobs:
+        log(f"Step 3: Syncing {len(all_new_jobs)} jobs to Supabase...")
+        # Sync LinkedIn jobs
+        if linkedin_jobs:
+            added, skipped, err = linkedin_sync_to_supabase(linkedin_jobs)
+            total_added += added
+            total_skipped += skipped
+            log(f"  LinkedIn sync: {added} new, {skipped} duplicates")
+
+        # Sync discovered jobs
+        if discovered_jobs:
+            sb = get_supabase()
+            if sb:
+                try:
+                    existing = sb.table("jobs").select("id,url").execute().data or []
+                    existing_urls = {(j.get("url") or "").split("?")[0] for j in existing if j.get("url")}
+                    import time as _time
+                    to_insert = []
+                    for dj in discovered_jobs:
+                        clean_url = (dj.get("url") or "").split("?")[0]
+                        if clean_url and clean_url in existing_urls:
+                            total_skipped += 1
+                            continue
+                        job_id = str(int(_time.time() * 1000)) + str(len(to_insert))
+                        to_insert.append({
+                            "id": job_id,
+                            "role": dj.get("role", ""),
+                            "company": dj.get("company", ""),
+                            "url": clean_url,
+                            "jd": (dj.get("jd") or "")[:8000],
+                            "status": "saved",
+                            "source": dj.get("source", "Discovery"),
+                            "roleType": "Business Analyst",
+                            "dateApplied": datetime.datetime.now().isoformat(),
+                        })
+                        if clean_url:
+                            existing_urls.add(clean_url)
+                    if to_insert:
+                        sb.table("jobs").upsert(to_insert, on_conflict="id").execute()
+                    total_added += len(to_insert)
+                    log(f"  Discovery sync: {len(to_insert)} new, {total_skipped} duplicates")
+                except Exception as e:
+                    log(f"  Discovery sync error: {str(e)[:60]}")
+    else:
+        log("Step 3: No new jobs to sync")
+
+    log(f"  Summary: {total_added} added, {total_skipped} skipped")
+
+    # ── Step 4 + 5 + 6: Score, generate docs, save (via existing agent_run) ──
+    sb = get_supabase()
+    agent_summary = None
+    if sb:
+        try:
+            res = sb.table("jobs").select("*").execute()
+            jobs = [j for j in (res.data or []) if not j.get("isDemo")]
+            to_run = [
+                j for j in jobs
+                if (j.get("jd") and j.get("aiScore") is None) or
+                   (j.get("aiScore", 0) >= 5 and not j.get("resume_docx_b64"))
+            ]
+            if to_run:
+                log(f"Step 4-6: Processing {len(to_run)} jobs (score → docs → save)...")
+                agent_summary = agent_run(to_run, trigger="auto")
+                log(f"  Done: {agent_summary['scored']} scored, {agent_summary['docs']} docs generated")
+            else:
+                log("Step 4-6: All jobs already processed")
+        except Exception as e:
+            log(f"Step 4-6 error: {str(e)[:60]}")
+
+    log("✅ Autonomous pipeline complete")
+
+    return {
+        "pipeline_log": pipeline_log,
+        "discovered": len(discovered_jobs),
+        "linkedin": len(linkedin_jobs),
+        "added": total_added,
+        "skipped": total_skipped,
+        "scored": agent_summary["scored"] if agent_summary else 0,
+        "docs": agent_summary["docs"] if agent_summary else 0,
+    }
+
+
+@app.route("/api/agent/autonomous", methods=["POST"])
+def agent_autonomous_route():
+    """Trigger the fully autonomous agentic pipeline."""
+    data = request.json or {}
+    config = {
+        "keywords": data.get("keywords", ""),
+        "location": data.get("location", "Singapore"),
+        "max_days": data.get("max_days", 30),
+        "platforms": data.get("platforms", ["indeed", "jobstreet", "workable"]),
+    }
+
+    def bg():
+        with app.app_context():
+            agent_autonomous_pipeline(config)
+
+    threading.Thread(target=bg, daemon=True).start()
+    return jsonify({"status": "started", "message": "Autonomous agent pipeline running in background"})
 
 
 # ─── AGENT ROUTES ────────────────────────────────────────────
@@ -1830,6 +2758,50 @@ def linkedin_scrape_saved_jobs():
                 pass
 
     return jobs, error
+
+
+def linkedin_sync_to_supabase(scraped_jobs):
+    """Sync scraped LinkedIn jobs to Supabase, deduplicating by URL/linkedInId."""
+    sb = get_supabase()
+    if not sb:
+        return 0, 0, "Supabase not configured"
+    try:
+        existing = sb.table("jobs").select("id,url,linkedInId").execute().data or []
+        existing_urls = {(j.get("url") or "").split("?")[0] for j in existing if j.get("url")}
+        existing_li   = {j.get("linkedInId") for j in existing if j.get("linkedInId")}
+
+        to_insert = []
+        skipped = 0
+        for job in scraped_jobs:
+            clean_url = (job.get("url") or "").split("?")[0]
+            li_id     = job.get("linkedInId", "")
+            if (clean_url and clean_url in existing_urls) or (li_id and li_id in existing_li):
+                skipped += 1
+                continue
+            import time as _time
+            to_insert.append({
+                "id":          li_id or str(int(_time.time() * 1000)),
+                "linkedInId":  li_id,
+                "role":        job.get("role", ""),
+                "company":     job.get("company", ""),
+                "url":         clean_url,
+                "jd":          (job.get("jd") or "")[:8000],
+                "status":      job.get("status", "saved"),
+                "source":      "LinkedIn",
+                "roleType":    job.get("roleType", "Business Analyst"),
+                "dateApplied": job.get("dateApplied", ""),
+                "salary":      "",
+                "notes":       "",
+            })
+            if clean_url: existing_urls.add(clean_url)
+            if li_id:     existing_li.add(li_id)
+
+        if to_insert:
+            sb.table("jobs").upsert(to_insert, on_conflict="id").execute()
+
+        return len(to_insert), skipped, None
+    except Exception as e:
+        return 0, 0, str(e)
 
 
 @app.route("/api/linkedin/scrape", methods=["POST"])

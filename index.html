@@ -38,7 +38,7 @@
 
 body {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  background: var(--gray-50);
+  background: linear-gradient(180deg, var(--gray-50) 0%, #eef2ff 100%);
   color: var(--gray-800);
   min-height: 100vh;
   font-size: 14px;
@@ -491,17 +491,36 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 .panel-body { padding: 14px; flex: 1; font-size: 12px; line-height: 1.6; color: var(--gray-700); white-space: pre-wrap; }
 .panel-footer { padding: 10px 14px; border-top: 1px solid var(--gray-200); display: flex; gap: 8px; }
 
-/* TAB 5 — SALARY & REFERRAL */
-.salary-bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.salary-role { font-size: 12px; font-weight: 600; color: var(--gray-700); width: 170px; flex-shrink: 0; }
-.salary-range-bar { flex: 1; height: 8px; background: var(--gray-100); border-radius: 99px; position: relative; }
-.salary-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--blue), var(--accent)); }
-.salary-numbers { font-size: 11px; color: var(--gray-500); white-space: nowrap; }
-.target-marker { position: absolute; top: -4px; width: 3px; height: 16px; background: var(--danger); border-radius: 2px; }
+/* TAB 6 — JOB DISCOVERY */
+.discovery-card { background: var(--white); border-radius: var(--radius); padding: 20px; border: 1.5px solid var(--gray-200); transition: all 0.25s ease; position: relative; overflow: hidden; }
+.discovery-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--blue-light)); opacity: 0; transition: opacity 0.25s; }
+.discovery-card:hover { border-color: var(--blue-light); box-shadow: var(--shadow); transform: translateY(-2px); }
+.discovery-card:hover::before { opacity: 1; }
+.discovery-platform { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.platform-indeed { background: #e0f2fe; color: #0369a1; }
+.platform-jobstreet { background: #fce7f3; color: #be185d; }
+.platform-workable { background: #ecfdf5; color: #047857; }
 
-.referral-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px; background: var(--gray-50); border-radius: var(--radius-sm); border: 1px solid var(--gray-200); margin-bottom: 8px; }
-.referral-name { font-weight: 700; font-size: 13px; color: var(--navy); min-width: 100px; }
-.referral-co { font-size: 12px; color: var(--gray-500); }
+/* FADE-IN ANIMATION */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.tab-content.active { animation: fadeInUp 0.3s ease-out; }
+
+/* CARD HOVER ENHANCEMENT */
+.card { transition: box-shadow 0.25s ease, transform 0.25s ease; }
+.card:hover { box-shadow: var(--shadow-lg); }
+
+/* BUTTON PULSE (for primary actions) */
+@keyframes subtlePulse { 0%, 100% { box-shadow: 0 4px 12px rgba(26,86,219,0.3); } 50% { box-shadow: 0 4px 20px rgba(26,86,219,0.45); } }
+.btn-primary:not(:disabled) { animation: subtlePulse 3s ease-in-out infinite; }
+.btn-primary:hover { animation: none; }
+
+/* PROGRESS LOG STYLING */
+.progress-log { font-family: 'Fira Code', 'Consolas', monospace; font-size: 12px; background: var(--gray-800); color: #a5f3fc; border-radius: var(--radius-sm); padding: 14px; max-height: 200px; overflow-y: auto; line-height: 1.8; }
+
+/* BULK APPLY MODAL ENHANCEMENT */
+.bulk-job-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--gray-200); margin-bottom: 6px; transition: background 0.15s; }
+.bulk-job-item:hover { background: var(--blue-pale); }
+.bulk-job-item input[type=checkbox] { accent-color: var(--blue); width: 16px; height: 16px; }
 
 /* RESPONSIVE */
 @media (max-width: 900px) {
@@ -548,7 +567,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     <div class="header-logo">AK</div>
     <div>
       <div class="header-title">AI Job Hunt Command Centre</div>
-      <div class="header-sub">Amretha Karthikeyan · Lead BA · Singapore · Powered by Gemini AI ✨</div>
+      <div class="header-sub">Amretha Karthikeyan · Lead BA · Singapore · Powered by Claude AI ✨</div>
     </div>
   </div>
   <div style="color:rgba(255,255,255,0.7);font-size:12px;" id="headerDate"></div>
@@ -575,8 +594,8 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   <button class="tab-btn active" onclick="switchTab('tab1',this)"><span class="tab-icon">📄</span>Resume Tailorer</button>
   <button class="tab-btn" onclick="switchTab('tab2',this)"><span class="tab-icon">🎯</span>Interview Prep</button>
   <button class="tab-btn" onclick="switchTab('tab3',this)"><span class="tab-icon">📋</span>Job Tracker</button>
+  <button class="tab-btn" onclick="switchTab('tab6',this)"><span class="tab-icon">🌐</span>Job Discovery</button>
   <button class="tab-btn" onclick="switchTab('tab4',this)"><span class="tab-icon">🚀</span>Auto-Apply Centre</button>
-  <button class="tab-btn" onclick="switchTab('tab5',this)"><span class="tab-icon">💰</span>Salary & Referrals</button>
 </div>
 
 <!-- ========== TAB 1: RESUME TAILORER ========== -->
@@ -725,6 +744,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
       <button class="btn btn-sm" style="background:#0ea5e9;color:white;border:none;" onclick="openImportModal()">📥 Import from LinkedIn</button>
       <button id="extractJobsBtn" class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="extractLatestJobs()">🚀 Extract Latest Jobs</button>
       <button class="btn btn-sm" style="background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;" onclick="openRankModal()">🏆 AI Rank</button>
+      <button class="btn btn-sm" style="background:#dcfce7;color:#166534;border:1.5px solid #86efac;" onclick="bulkAutoApply()">⚡ Bulk Auto-Apply</button>
       <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ CSV</button>
       <button class="btn btn-sm" style="background:#fff7ed;color:#c2410c;border:1.5px solid #fed7aa;" onclick="confirmClearAll()">🗑 Clear All</button>
     </div>
@@ -890,61 +910,164 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   </div>
 </div>
 
-<!-- ========== TAB 5: SALARY & REFERRALS ========== -->
-<div id="tab5" class="tab-content">
-  <div class="grid-2">
-    <!-- Salary Benchmarking -->
+  <!-- PROFILE MANAGEMENT & AUTONOMOUS AGENT -->
+  <div class="grid-2" style="margin-bottom:24px;">
+    <!-- Profile Manager -->
     <div class="card">
-      <div class="card-title">💰 Singapore Salary Benchmarking</div>
-      <div id="salaryBars" style="margin-bottom:20px;"></div>
-      <div class="divider"></div>
-      <div class="form-group">
-        <label>Your Target Monthly Rate (SGD)</label>
-        <input type="number" class="form-control" id="myTargetSalary" placeholder="e.g. 9000" oninput="checkSalaryPosition()">
+      <div class="card-title">👤 Profile Manager</div>
+      <div id="profileStatus" style="padding:8px 12px;border-radius:8px;background:var(--blue-pale);font-size:12px;color:var(--blue);margin-bottom:12px;">
+        Loading profile...
       </div>
-      <div id="salaryPositionMsg" style="margin-top:8px;"></div>
-      <div class="divider"></div>
-      <div style="background:var(--blue-pale);border:1.5px solid var(--blue-mid);border-radius:var(--radius-sm);padding:14px;">
-        <div style="font-weight:700;color:var(--navy);font-size:13px;margin-bottom:8px;">💡 Negotiation Tip for Amretha</div>
-        <div style="font-size:12.5px;color:var(--gray-700);line-height:1.6;">With your SAFe 6.0 certification, 5+ years at KPMG, and a proven track record of delivering 5% profit increase and saving 30 man-days through automation — you are in the <strong>upper-mid band</strong> of the market. Anchor at <strong>10–15% above</strong> your target, cite your KPMG delivery metrics, and emphasise your dual strength in technical BA + Product Ownership. Singapore fintech firms pay a premium for SAFe-certified leads. For <strong>AI product roles</strong>, your hands-on Claude Opus 4.6 project is a tangible differentiator — most candidates only have theory. Use it to justify the upper end of the range.</div>
+      <div class="form-group">
+        <label>Paste Your Resume or Profile</label>
+        <textarea class="form-control" id="profileResumeText" placeholder="Paste your full resume text here. AI will parse it into a structured profile automatically..." style="min-height:160px;font-size:12px;"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="parseAndSaveProfile()" id="profileParseBtn">🤖 AI Parse & Save Profile</button>
+        <button class="btn btn-ghost" onclick="resetProfile()">↩ Reset to Default</button>
+      </div>
+      <div id="profilePreview" style="display:none;margin-top:16px;">
+        <div class="divider"></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">📋 Active Profile Preview</div>
+        <div id="profilePreviewContent" style="background:var(--gray-50);border-radius:8px;padding:12px;font-size:12px;line-height:1.6;max-height:240px;overflow-y:auto;"></div>
+        <button class="btn btn-sm btn-secondary" onclick="editProfileManually()" style="margin-top:8px;">✏️ Edit Manually</button>
+      </div>
+      <!-- Manual edit form (hidden by default) -->
+      <div id="profileEditForm" style="display:none;margin-top:16px;">
+        <div class="divider"></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;">✏️ Edit Profile</div>
+        <div class="grid-2" style="gap:10px;">
+          <div class="form-group"><label>Full Name</label><input type="text" class="form-control" id="profName"></div>
+          <div class="form-group"><label>Email</label><input type="text" class="form-control" id="profEmail"></div>
+          <div class="form-group"><label>Phone</label><input type="text" class="form-control" id="profMobile"></div>
+          <div class="form-group"><label>LinkedIn URL</label><input type="text" class="form-control" id="profLinkedin"></div>
+        </div>
+        <div class="form-group"><label>Headline</label><input type="text" class="form-control" id="profHeadline" placeholder="e.g. Product Manager | Fintech | Singapore"></div>
+        <div class="form-group"><label>Summary</label><textarea class="form-control" id="profSummary" style="min-height:80px;"></textarea></div>
+        <div class="form-group"><label>Skills (comma-separated)</label><input type="text" class="form-control" id="profSkills"></div>
+        <div class="form-group"><label>Certification</label><input type="text" class="form-control" id="profCert"></div>
+        <button class="btn btn-success" onclick="saveProfileManually()" style="width:100%;">💾 Save Profile</button>
       </div>
     </div>
 
-    <!-- Referral Tracker -->
+    <!-- Autonomous Agent -->
     <div class="card">
-      <div class="card-title">🤝 Referral Tracker</div>
-      <button class="btn btn-primary btn-sm" onclick="openReferralModal()" style="margin-bottom:16px;">+ Add Referral Contact</button>
-      <div id="referralList"><div style="color:var(--gray-400);font-size:12px;text-align:center;padding:30px;">No referral contacts yet. Add your first one!</div></div>
+      <div class="card-title">🤖 Autonomous Agent</div>
+      <div style="font-size:12px;color:var(--gray-500);margin-bottom:16px;">
+        One-click fully autonomous pipeline: Discover Jobs → Score → Generate Docs → Notify. The agent runs everything end-to-end.
+      </div>
+      <div class="form-group">
+        <label>Search Keywords (auto-filled from profile)</label>
+        <input type="text" class="form-control" id="autoAgentKw" placeholder="Product Owner, Business Analyst">
+      </div>
+      <div class="grid-2" style="gap:10px;">
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" class="form-control" id="autoAgentLoc" value="Singapore">
+        </div>
+        <div class="form-group">
+          <label>Max Job Age</label>
+          <select class="form-control" id="autoAgentDays">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Platforms</label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatIndeed" checked> Indeed</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatJobStreet" checked> JobStreet</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatWorkable" checked> Workable</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="checkbox" id="autoPlatLinkedIn" checked> LinkedIn</label>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="runAutonomousAgent()" id="autoAgentBtn" style="width:100%;padding:14px;font-size:14px;">
+        🚀 Run Full Autonomous Pipeline
+      </button>
+      <div id="autoAgentLog" style="display:none;margin-top:16px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px;">📋 Pipeline Log</div>
+        <pre id="autoAgentLogContent" class="progress-log" style="min-height:100px;"></pre>
+      </div>
     </div>
   </div>
 
-  <!-- Follow-up Email Generator -->
-  <div class="card" style="margin-top:20px;">
-    <div class="card-title">📧 Smart Follow-Up Email Generator</div>
-    <div class="grid-2">
+<!-- ========== TAB 6: JOB DISCOVERY ========== -->
+<div id="tab6" class="tab-content">
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
-        <div class="form-group">
-          <label>Company Name</label>
-          <input type="text" class="form-control" id="fuCompany" placeholder="e.g. Grab">
-        </div>
-        <div class="form-group">
-          <label>Role Title</label>
-          <input type="text" class="form-control" id="fuRole" placeholder="e.g. Lead Business Analyst">
-        </div>
-        <div class="form-group">
-          <label>Days Since Application</label>
-          <input type="number" class="form-control" id="fuDays" placeholder="e.g. 10" value="10">
-        </div>
-        <button class="btn btn-primary" onclick="generateFollowUp()">✉️ Generate Follow-Up Email</button>
-      </div>
-      <div>
-        <div class="section-label">Generated Email</div>
-        <div class="output-area" id="followUpOutput" style="margin-top:6px;min-height:160px;">
-          <span class="output-placeholder">Your follow-up email will appear here...</span>
-        </div>
-        <button class="btn btn-sm btn-secondary" onclick="copyPanel('followUpOutput')" style="margin-top:8px;display:none;" id="copyFuBtn">📋 Copy Email</button>
+        <div class="card-title" style="margin-bottom:2px;">🌐 Discover Jobs from Multiple Platforms</div>
+        <div style="font-size:12px;color:var(--gray-400);">Search Indeed, JobStreet & Workable for roles matching your profile. Results sorted by AI job fit score.</div>
       </div>
     </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="grid-2" style="gap:16px;">
+      <div>
+        <div class="form-group">
+          <label>Job Title / Keywords</label>
+          <input type="text" class="form-control" id="discoverKeywords" placeholder="e.g. Product Owner, Business Analyst" value="Product Owner">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" class="form-control" id="discoverLocation" placeholder="e.g. Singapore" value="Singapore">
+        </div>
+      </div>
+      <div>
+        <div class="form-group">
+          <label>Platforms</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="discPlatIndeed" checked> Indeed
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="discPlatJobStreet" checked> JobStreet
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="discPlatWorkable" checked> Workable
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Max Age</label>
+          <select class="form-control" id="discoverMaxDays">
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30" selected>Last 30 days</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="discoverJobs()" id="discoverBtn" style="width:100%;">🔍 Search All Platforms</button>
+  </div>
+
+  <!-- Discovery Results -->
+  <div id="discoveryProgress" style="display:none;background:#1e1b4b;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <span style="color:#a5b4fc;font-weight:600;font-size:13px;">🔍 Searching platforms...</span>
+      <button onclick="document.getElementById('discoveryProgress').style.display='none'" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <pre id="discoveryLog" style="color:#e0e7ff;font-size:12px;font-family:monospace;margin:0;white-space:pre-wrap;max-height:180px;overflow-y:auto;line-height:1.7;"></pre>
+  </div>
+
+  <div id="discoveryResults" style="display:none;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:0;">🏆 Discovered Jobs <span id="discoveryCount" style="font-size:12px;color:var(--gray-400);font-weight:400;"></span></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm btn-primary" onclick="importSelectedDiscoveries()" id="importDiscBtn">📥 Import Selected to Tracker</button>
+        <button class="btn btn-sm btn-secondary" onclick="importAllDiscoveries()">📥 Import All</button>
+      </div>
+    </div>
+    <div id="discoveryList"></div>
+  </div>
+
+  <div id="discoveryEmpty" style="text-align:center;padding:60px 20px;color:var(--gray-400);">
+    <div style="font-size:48px;margin-bottom:12px;">🌐</div>
+    <div style="font-size:14px;">Search for jobs across Indeed, JobStreet & Workable</div>
+    <div style="font-size:12px;margin-top:6px;">Results will be AI-scored and sorted by fit</div>
   </div>
 </div>
 
@@ -1247,24 +1370,6 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   </div>
 </div>
 
-<!-- Referral Modal -->
-<div class="modal-overlay" id="referralModal" style="display:none;">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('referralModal')">✕</button>
-    <div class="modal-title">🤝 Add Referral Contact</div>
-    <div class="form-group"><label>Name *</label><input type="text" class="form-control" id="rName" placeholder="Full name"></div>
-    <div class="form-group"><label>Company</label><input type="text" class="form-control" id="rCompany" placeholder="Company name"></div>
-    <div class="form-group"><label>Role They Can Refer You For</label><input type="text" class="form-control" id="rRole" placeholder="e.g. Lead BA at Grab"></div>
-    <div class="form-group"><label>LinkedIn URL</label><input type="url" class="form-control" id="rLinkedIn" placeholder="https://linkedin.com/in/..."></div>
-    <div class="form-group"><label>Status</label><select class="form-control" id="rStatus"><option>Not Contacted</option><option>Reached Out</option><option>In Discussion</option><option>Referred</option><option>No Response</option></select></div>
-    <div class="form-group"><label>Notes</label><textarea class="form-control" id="rNotes" placeholder="Any notes..." style="min-height:70px;"></textarea></div>
-    <div class="flex-row" style="margin-top:16px;">
-      <button class="btn btn-primary" onclick="saveReferral()">💾 Save Contact</button>
-      <button class="btn btn-ghost" onclick="closeModal('referralModal')">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <!-- Job Detail Modal -->
 <div class="modal-overlay" id="jobDetailModal" style="display:none;">
   <div class="modal" style="max-width:640px;">
@@ -1320,6 +1425,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 </div>
 
 
+<div class="modal-overlay" id="speedKitModal" style="display:none;">
   <div class="modal modal-lg" style="max-width:700px;">
     <button class="modal-close" onclick="closeModal('speedKitModal')">✕</button>
     <div class="modal-title">🏃 Quick Apply Speed Kit</div>
@@ -1458,6 +1564,7 @@ async function openRankModal() {
   document.getElementById('rankFetchPrompt').style.display = 'none';
   openModal('rankModal');
 
+  const jobs = getJobs();
   const realJobs = jobs.filter(j => !j.isDemo);
   if (realJobs.length === 0) {
     document.getElementById('rankEmpty').style.display = 'block';
@@ -1686,7 +1793,6 @@ function switchTab(tabId, btn) {
   document.getElementById(tabId).classList.add("active");
   btn.classList.add("active");
   if (tabId === 'tab3') { renderKanban(); updateStats(); renderAnalytics(); }
-  if (tabId === 'tab5') { renderSalaryBars(); renderReferrals(); }
 }
 
 // ========== DATE HELPERS ==========
@@ -1750,8 +1856,8 @@ function analyzeKeywords(jd, roleType) {
   };
   // Boost AI keywords if JD is AI-related
   const aiKws = ["generative ai","llm","machine learning","ai","prompt engineering","nlp","foundation model","ai product","claude","openai","data science","intelligent automation","ai-powered","model evaluation","rag","fine-tuning"];
+  let allKws = [...coreKws, ...(roleKws[roleType] || [])];
   if (isAIRole(jdLower, roleType)) { allKws.push(...aiKws); }
-  const allKws = [...coreKws, ...(roleKws[roleType] || [])];
   const found = allKws.filter(k => jdLower.includes(k));
   const missing = allKws.filter(k => !jdLower.includes(k));
   const score = Math.round((found.length / allKws.length) * 100);
@@ -2120,14 +2226,14 @@ function renderRow(j) {
 
 function moveJob(id, newCol) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === id);
+  const j = jobs.find(j => String(j.id) === String(id));
   if (j) { j.status = newCol; saveJobs(jobs); renderKanban(); updateStats(); toast(`Moved to ${COL_LABELS[newCol].replace(/[^\w\s]/g,"").trim()}`, "success"); }
 }
 
 // ─── FETCH JD FOR A SINGLE JOB ─────────────────────────────
 async function fetchJDForJob(id) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === id);
+  const j = jobs.find(j => String(j.id) === String(id));
   if (!j || !j.url) return;
 
   toast('Fetching JD...', '');
@@ -2181,7 +2287,7 @@ async function fetchMissingJDs() {
 // ─── TAILOR RESUME FOR A SPECIFIC JOB ──────────────────────
 function tailorForJob(id) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === id);
+  const j = jobs.find(j => String(j.id) === String(id));
   if (!j) return;
 
   // Switch to Resume Tailorer tab
@@ -2226,7 +2332,7 @@ function deleteJob(id) {
 // ========== JOB DETAIL MODAL ==========
 function openJobDetail(id) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === id);
+  const j = jobs.find(j => String(j.id) === String(id));
   if (!j) return;
 
   document.getElementById("jdModalTitle").textContent = `📋 ${j.company} — ${j.role}`;
@@ -2411,7 +2517,7 @@ let currentChecklistJobId = null;
 function openChecklist(jobId) {
   currentChecklistJobId = jobId;
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === jobId);
+  const j = jobs.find(j => String(j.id) === String(jobId));
   document.getElementById("checklistTitle").textContent = `✅ Application Checklist – ${j?.company||""}`;
   const checked = j?.checklist || {};
   document.getElementById("checklistItems").innerHTML = CHECKLIST_ITEMS.map((item, i) => 
@@ -2423,7 +2529,7 @@ function openChecklist(jobId) {
 }
 function toggleChecklist(idx) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === currentChecklistJobId);
+  const j = jobs.find(j => String(j.id) === String(currentChecklistJobId));
   if (!j) return;
   if (!j.checklist) j.checklist = {};
   j.checklist[idx] = document.getElementById("cli"+idx).checked;
@@ -2436,7 +2542,7 @@ function saveChecklist() { toast("Checklist saved!", "success"); closeModal("che
 // ========== APPLY KIT FOR JOB ==========
 async function openApplyKitForJob(jobId) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === jobId);
+  const j = jobs.find(j => String(j.id) === String(jobId));
   if (!j) return;
 
   document.getElementById("applyKitTitle").textContent = `⚡ Apply Kit – ${j.company} · ${j.role}`;
@@ -2515,7 +2621,7 @@ async function generateKitDocs(j) {
 
     // Save to job in localStorage + Supabase
     const allJobs = getJobs();
-    const jIdx = allJobs.findIndex(jb => jb.id === j.id);
+    const jIdx = allJobs.findIndex(jb => String(jb.id) === String(j.id));
     if (jIdx > -1) {
       allJobs[jIdx].resume_docx_b64 = data.resume_b64;
       allJobs[jIdx].cover_docx_b64 = data.cover_b64;
@@ -2542,27 +2648,54 @@ async function generateKitDocs(j) {
 // ========== FOLLOW-UP GENERATOR ==========
 async function generateFollowUpForJob(jobId) {
   const jobs = getJobs();
-  const j = jobs.find(j => j.id === jobId);
+  const j = jobs.find(j => String(j.id) === String(jobId));
   if (!j) return;
-  switchTab("tab5", document.querySelector('.tab-btn:nth-child(5)'));
-  document.getElementById("fuCompany").value = j.company;
-  document.getElementById("fuRole").value = j.role;
-  document.getElementById("fuDays").value = daysSince(j.dateApplied);
-  await generateFollowUp();
+  toast('Generating follow-up email...', '');
+  try {
+    const data = await callBackend("/api/follow-up", {
+      company: j.company, role: j.role, days: daysSince(j.dateApplied)
+    });
+    // Show in a simple alert/copy prompt
+    const text = data.result || "Could not generate follow-up.";
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="modal-overlay" style="display:flex;z-index:9999;" onclick="if(event.target===this)this.remove()">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        <div class="modal-title">📧 Follow-Up Email — ${j.company}</div>
+        <pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:var(--gray-50);border-radius:8px;padding:16px;max-height:400px;overflow-y:auto;">${text}</pre>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="navigator.clipboard.writeText(this.closest('.modal').querySelector('pre').textContent);toast('Copied!','success');">📋 Copy Email</button>
+      </div>
+    </div>`;
+    document.body.appendChild(el.firstChild);
+    toast("Follow-up email ready!", "success");
+  } catch(e) {
+    toast("Error generating follow-up: " + e.message, "error");
+  }
 }
 
 async function generateFollowUp() {
-  const company = document.getElementById("fuCompany").value.trim() || "the company";
-  const role = document.getElementById("fuRole").value.trim() || "the role";
-  const days = document.getElementById("fuDays").value || "7";
-  document.getElementById("followUpOutput").innerHTML = '<span class="spinner spinner-blue"></span>';
+  // Legacy function - generate from kit inputs
+  const company = (document.getElementById("fuCompany")?.value || "").trim() || "the company";
+  const role = (document.getElementById("fuRole")?.value || "").trim() || "the role";
+  const days = (document.getElementById("fuDays")?.value) || "7";
+  toast('Generating follow-up...', '');
   try {
     const data = await callBackend("/api/follow-up", { company, role, days });
-    document.getElementById("followUpOutput").textContent = data.result;
-    document.getElementById("copyFuBtn").style.display = "inline-flex";
-    toast("Follow-up email ready!", "success");
+    toast("Follow-up ready!", "success");
+    // Show in modal
+    const text = data.result || "Could not generate.";
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="modal-overlay" style="display:flex;z-index:9999;" onclick="if(event.target===this)this.remove()">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        <div class="modal-title">📧 Follow-Up Email</div>
+        <pre style="white-space:pre-wrap;font-size:13px;line-height:1.7;background:var(--gray-50);border-radius:8px;padding:16px;max-height:400px;overflow-y:auto;">${text}</pre>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="navigator.clipboard.writeText(this.closest('.modal').querySelector('pre').textContent);toast('Copied!','success');">📋 Copy Email</button>
+      </div>
+    </div>`;
+    document.body.appendChild(el.firstChild);
   } catch(e) {
-    document.getElementById("followUpOutput").textContent = "Error: " + e.message;
+    toast("Error: " + e.message, "error");
   }
 }
 
@@ -2758,87 +2891,247 @@ function copyPanel(elId) {
   navigator.clipboard.writeText(el.textContent || el.innerText).then(() => toast("Copied to clipboard! 📋", "success"));
 }
 
-// ========== SALARY BENCHMARKING ==========
-const SALARY_DATA = [
-  { role: "Product Manager", min: 8000, max: 14000 },
-  { role: "Product Owner", min: 7500, max: 12000 },
-  { role: "Business Analyst Lead", min: 7000, max: 11000 },
-  { role: "Business Development", min: 6000, max: 12000 }
-];
+// ========== JOB DISCOVERY ==========
+let discoveredJobs = [];
 
-function renderSalaryBars() {
-  const globalMax = 16000;
-  document.getElementById("salaryBars").innerHTML = SALARY_DATA.map(s => `
-    <div class="salary-bar-wrap">
-      <div class="salary-role">${s.role}</div>
-      <div class="salary-range-bar">
-        <div class="salary-fill" style="left:${(s.min/globalMax)*100}%;width:${((s.max-s.min)/globalMax)*100}%;"></div>
-        <div id="targetMark_${s.role.replace(/\s/g,'_')}" class="target-marker" style="display:none;"></div>
+async function discoverJobs() {
+  const keywords = document.getElementById('discoverKeywords').value.trim();
+  const location = document.getElementById('discoverLocation').value.trim();
+  const maxDays = parseInt(document.getElementById('discoverMaxDays').value) || 30;
+  const platforms = [];
+  if (document.getElementById('discPlatIndeed').checked) platforms.push('indeed');
+  if (document.getElementById('discPlatJobStreet').checked) platforms.push('jobstreet');
+  if (document.getElementById('discPlatWorkable').checked) platforms.push('workable');
+
+  if (!keywords) { toast('Enter job title/keywords', 'error'); return; }
+  if (!platforms.length) { toast('Select at least one platform', 'error'); return; }
+
+  const btn = document.getElementById('discoverBtn');
+  btn.innerHTML = '<span class="spinner"></span> Searching...';
+  btn.disabled = true;
+  document.getElementById('discoveryProgress').style.display = 'block';
+  document.getElementById('discoveryResults').style.display = 'none';
+  document.getElementById('discoveryEmpty').style.display = 'none';
+  const logEl = document.getElementById('discoveryLog');
+  logEl.textContent = '';
+
+  function log(msg) { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+
+  log(`🔍 Searching for "${keywords}" in ${location}...`);
+  log(`Platforms: ${platforms.join(', ')} | Max age: ${maxDays} days`);
+
+  try {
+    const data = await callBackend('/api/discover-jobs', { keywords, location, maxDays, platforms });
+    if (data.error) { log('❌ Error: ' + data.error); toast(data.error, 'error'); return; }
+
+    discoveredJobs = data.jobs || [];
+    log(`✅ Found ${discoveredJobs.length} jobs total`);
+    if (data.details) {
+      Object.entries(data.details).forEach(([p, info]) => {
+        log(`  ${p}: ${info.count || 0} jobs${info.error ? ' (⚠ ' + info.error + ')' : ''}`);
+      });
+    }
+
+    if (discoveredJobs.length === 0) {
+      document.getElementById('discoveryEmpty').style.display = 'block';
+      toast('No jobs found. Try different keywords.', 'warning');
+      return;
+    }
+
+    // Sort by AI score descending
+    discoveredJobs.sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
+    renderDiscoveryResults();
+    toast(`Found ${discoveredJobs.length} jobs!`, 'success');
+  } catch (e) {
+    log('❌ Error: ' + e.message);
+    toast('Search failed: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '🔍 Search All Platforms';
+    btn.disabled = false;
+  }
+}
+
+function renderDiscoveryResults() {
+  document.getElementById('discoveryResults').style.display = 'block';
+  document.getElementById('discoveryEmpty').style.display = 'none';
+  document.getElementById('discoveryCount').textContent = `(${discoveredJobs.length} results)`;
+  const el = document.getElementById('discoveryList');
+  el.innerHTML = discoveredJobs.map((j, i) => {
+    const score = j.aiScore || 0;
+    const scoreClass = score >= 7 ? 'score-high' : score >= 5 ? 'score-mid' : 'score-low';
+    const scoreText = score ? `<span class="score-badge ${scoreClass}">${score}/10</span>` : '<span style="font-size:11px;color:var(--gray-400);">—</span>';
+    const labels = { '🔥 Strong Match': '#dcfce7', '✅ Good Fit': '#dbeafe', '🟡 Possible': '#fef3c7', '❌ Weak Fit': '#fee2e2' };
+    const labelBg = labels[j.aiLabel] || '#f3f4f6';
+    const daysAgo = j.postedDaysAgo != null ? `${j.postedDaysAgo}d ago` : '';
+    return `<div class="card" style="margin-bottom:8px;padding:12px 16px;display:grid;grid-template-columns:30px 1fr auto auto auto auto;align-items:center;gap:12px;">
+      <input type="checkbox" class="disc-check" data-idx="${i}" checked>
+      <div>
+        <div style="font-weight:700;font-size:13px;color:var(--navy);">${j.company || 'Unknown'}</div>
+        <div style="font-size:12px;color:var(--gray-600);margin-top:2px;">${j.role || j.title || ''}</div>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;">
+          <span style="font-size:10px;background:#f3f4f6;border-radius:99px;padding:1px 8px;color:var(--gray-500);">${j.platform || ''}</span>
+          ${daysAgo ? `<span style="font-size:10px;color:var(--gray-400);">${daysAgo}</span>` : ''}
+          ${j.location ? `<span style="font-size:10px;color:var(--gray-400);">📍 ${j.location}</span>` : ''}
+        </div>
       </div>
-      <div class="salary-numbers">S$${s.min.toLocaleString()} – S$${s.max.toLocaleString()}</div>
-    </div>`).join("");
+      <div>${scoreText}</div>
+      <div style="font-size:11px;"><span style="background:${labelBg};padding:2px 8px;border-radius:99px;">${j.aiLabel || ''}</span></div>
+      <div style="font-size:11px;color:var(--gray-500);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(j.aiReason || '').replace(/"/g, '&quot;')}">${j.aiReason || ''}</div>
+      <div style="display:flex;gap:4px;">
+        ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-xs btn-primary" style="text-decoration:none;">🔗</a>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function checkSalaryPosition() {
-  const target = parseInt(document.getElementById("myTargetSalary").value);
-  if (!target) { document.getElementById("salaryPositionMsg").innerHTML=""; return; }
-  const globalMax = 16000;
-  const myRole = SALARY_DATA[2]; // BA Lead
-  const pct = (target / globalMax) * 100;
-  
-  SALARY_DATA.forEach(s => {
-    const mark = document.getElementById("targetMark_"+s.role.replace(/\s/g,'_'));
-    if (mark) { mark.style.left = pct + "%"; mark.style.display = "block"; }
+function importSelectedDiscoveries() {
+  const checks = document.querySelectorAll('.disc-check:checked');
+  if (!checks.length) { toast('No jobs selected', 'error'); return; }
+  const jobs = getJobs();
+  const existingUrls = new Set(jobs.map(j => (j.url || '').split('?')[0]).filter(Boolean));
+  let added = 0;
+  checks.forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const dj = discoveredJobs[idx];
+    if (!dj) return;
+    const cleanUrl = (dj.url || '').split('?')[0];
+    if (cleanUrl && existingUrls.has(cleanUrl)) return;
+    jobs.push({
+      id: Date.now() + added,
+      company: dj.company || 'Unknown',
+      role: dj.role || dj.title || 'Unknown',
+      roleType: dj.roleType || 'Business Analyst',
+      status: 'wishlist',
+      url: dj.url || '',
+      jd: dj.jd || dj.description || '',
+      source: dj.platform || 'Discovery',
+      dateApplied: new Date().toISOString(),
+      salary: '',
+      notes: `AI Score: ${dj.aiScore || '?'}/10 — ${dj.aiLabel || ''}\n${dj.aiReason || ''}`,
+      aiScore: dj.aiScore,
+      aiLabel: dj.aiLabel,
+      aiReason: dj.aiReason,
+      aiPriority: dj.aiPriority,
+      isDemo: false
+    });
+    if (cleanUrl) existingUrls.add(cleanUrl);
+    added++;
   });
-  
-  let msg = "";
-  if (target < myRole.min) msg = `<div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:10px;font-size:12px;color:#991b1b;">⬇ Your target of S$${target.toLocaleString()} is <strong>below market</strong> for BA Lead (S$${myRole.min.toLocaleString()}–S$${myRole.max.toLocaleString()}). Consider anchoring higher!</div>`;
-  else if (target > myRole.max) msg = `<div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:10px;font-size:12px;color:#92400e;">⬆ Your target is <strong>above market median</strong> — this is achievable with your SAFe cert and KPMG track record.</div>`;
-  else msg = `<div style="background:#dcfce7;border:1.5px solid #86efac;border-radius:8px;padding:10px;font-size:12px;color:#166534;">✅ S$${target.toLocaleString()} is <strong>within market range</strong> for BA Lead. With your metrics, aim for the upper end!</div>`;
-  
-  document.getElementById("salaryPositionMsg").innerHTML = msg;
+  saveJobs(jobs);
+  renderKanban(); updateStats();
+  toast(`Imported ${added} jobs to tracker!`, 'success');
 }
 
-// ========== REFERRALS ==========
-function getReferrals() { return JSON.parse(localStorage.getItem("referrals") || "[]"); }
-function saveReferrals(r) { localStorage.setItem("referrals", JSON.stringify(r)); }
-
-function openReferralModal() {
-  ["rName","rCompany","rRole","rLinkedIn","rNotes"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("rStatus").value = "Not Contacted";
-  document.getElementById("referralModal").style.display = "flex";
+function importAllDiscoveries() {
+  document.querySelectorAll('.disc-check').forEach(cb => cb.checked = true);
+  importSelectedDiscoveries();
 }
 
-function saveReferral() {
-  const name = document.getElementById("rName").value.trim();
-  if (!name) { toast("Name is required", "error"); return; }
-  const refs = getReferrals();
-  refs.push({ id:"r"+Date.now(), name, company: document.getElementById("rCompany").value.trim(), role: document.getElementById("rRole").value.trim(), linkedin: document.getElementById("rLinkedIn").value.trim(), status: document.getElementById("rStatus").value, notes: document.getElementById("rNotes").value.trim(), dateContacted: new Date().toISOString() });
-  saveReferrals(refs);
-  closeModal("referralModal");
-  renderReferrals();
-  toast("Referral contact saved!", "success");
-}
+// ========== BULK AUTO-APPLY ==========
+async function bulkAutoApply() {
+  const jobs = getJobs().filter(j => !j.isDemo);
+  // Find jobs with JD and score >= 5 that don't have docs yet
+  const eligible = jobs.filter(j =>
+    j.jd && j.jd.length > 50 &&
+    (j.aiScore === undefined || j.aiScore === null || j.aiScore >= 5) &&
+    !j.resume_docx_b64
+  );
 
-function renderReferrals() {
-  const refs = getReferrals();
-  const el = document.getElementById("referralList");
-  if (!refs.length) { el.innerHTML = '<div style="color:var(--gray-400);font-size:12px;text-align:center;padding:30px;">No referral contacts yet.</div>'; return; }
-  const statusColors = {"Not Contacted":"#f3f4f6","Reached Out":"#dbeafe","In Discussion":"#fef3c7","Referred":"#dcfce7","No Response":"#fee2e2"};
-  el.innerHTML = refs.map(r => `<div class="referral-row">
-    <div>
-      <div class="referral-name">${r.name}</div>
-      <div class="referral-co">${r.company} · ${r.role}</div>
+  if (eligible.length === 0) {
+    toast('No eligible jobs to generate docs for. Need JD + AI Score >= 5 + no existing docs.', 'warning');
+    return;
+  }
+
+  // Show confirmation modal
+  const html = `<div class="modal-overlay" id="bulkApplyModal" style="display:flex;z-index:9999;" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:600px;">
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      <div class="modal-title">⚡ Bulk Auto-Apply</div>
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:16px;">
+        Generate tailored resume & cover letter for <strong>${eligible.length}</strong> eligible jobs.
+        Each job will get a customised .docx resume and cover letter based on its JD.
+      </p>
+      <div style="max-height:300px;overflow-y:auto;margin-bottom:16px;">
+        ${eligible.map((j, i) => `
+          <label style="display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;${i%2===0?'background:var(--gray-50);':''}">
+            <input type="checkbox" class="bulk-check" data-id="${j.id}" checked>
+            <div>
+              <div style="font-weight:600;font-size:12px;">${j.company}</div>
+              <div style="font-size:11px;color:var(--gray-500);">${j.role} ${j.aiScore ? '· '+j.aiScore+'/10' : ''}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+      <div id="bulkApplyProgress" style="display:none;background:#1e1b4b;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+        <pre id="bulkApplyLog" style="color:#e0e7ff;font-size:11px;font-family:monospace;margin:0;white-space:pre-wrap;max-height:120px;overflow-y:auto;"></pre>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" id="bulkApplyGoBtn" onclick="executeBulkApply()">⚡ Generate Docs for Selected</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('bulkApplyModal').remove()">Cancel</button>
+      </div>
     </div>
-    <span style="background:${statusColors[r.status]||'#f3f4f6'};padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;">${r.status}</span>
-    ${r.linkedin ? `<a href="${r.linkedin}" target="_blank" class="btn btn-xs btn-secondary">🔗 LinkedIn</a>` : ""}
-    <button class="btn btn-xs btn-ghost" onclick="deleteReferral('${r.id}')">✕</button>
-  </div>`).join("");
+  </div>`;
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  document.body.appendChild(el.firstChild);
 }
 
-function deleteReferral(id) {
-  saveReferrals(getReferrals().filter(r => r.id !== id));
-  renderReferrals(); toast("Removed");
+async function executeBulkApply() {
+  const checks = document.querySelectorAll('.bulk-check:checked');
+  if (!checks.length) { toast('No jobs selected', 'error'); return; }
+
+  const selectedIds = Array.from(checks).map(c => c.dataset.id);
+  const allJobs = getJobs();
+  const selectedJobs = allJobs.filter(j => selectedIds.includes(String(j.id)));
+
+  const btn = document.getElementById('bulkApplyGoBtn');
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+  btn.disabled = true;
+  document.getElementById('bulkApplyProgress').style.display = 'block';
+  const logEl = document.getElementById('bulkApplyLog');
+  logEl.textContent = `⚡ Generating docs for ${selectedJobs.length} jobs...\n`;
+
+  try {
+    const data = await callBackend('/api/bulk-apply', {
+      jobIds: selectedIds,
+      jobs: selectedJobs
+    });
+
+    if (data.error) { logEl.textContent += '❌ ' + data.error; return; }
+
+    // Update localStorage with generated docs
+    const jobs = getJobs();
+    let updated = 0;
+    (data.results || []).forEach(r => {
+      if (r.status === 'generated') {
+        const job = jobs.find(j => String(j.id) === String(r.id));
+        if (job) {
+          job.resume_docx_b64 = r.resume_docx_b64;
+          job.cover_docx_b64 = r.cover_docx_b64;
+          job.resume_variant = r.resume_variant;
+          job.resume_filename = r.resume_filename;
+          job.cover_filename = r.cover_filename;
+          job.resume_generated_at = new Date().toISOString();
+          updated++;
+        }
+        logEl.textContent += `✅ ${r.resume_filename}\n`;
+      } else if (r.status === 'skipped') {
+        logEl.textContent += `⏭ Skipped (${r.reason})\n`;
+      } else {
+        logEl.textContent += `❌ Error: ${r.reason || 'Unknown'}\n`;
+      }
+    });
+
+    saveJobs(jobs);
+    logEl.textContent += `\n🎉 Done: ${data.generated} generated, ${data.skipped} skipped, ${data.errors} errors`;
+    toast(`Bulk apply complete: ${data.generated} docs generated!`, 'success');
+  } catch (e) {
+    logEl.textContent += '❌ ' + e.message;
+    toast('Bulk apply failed: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '⚡ Generate Docs for Selected';
+    btn.disabled = false;
+  }
 }
 
 // ========== UTILITIES ==========
@@ -2871,8 +3164,6 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
   updateStats();
   renderAnalytics();
   renderTargetCompanies();
-  renderSalaryBars();
-  renderReferrals();
   updateDbStatusLine(loadResult);
   checkHashImport();
 
@@ -3218,7 +3509,7 @@ async function mergeBookmarkletJobs(incoming) {
           if (!data.rankings) return;
           const jobs = getJobs();
           data.rankings.forEach(r => {
-            const job = jobs.find(j => j.id === r.id);
+            const job = jobs.find(j => String(j.id) === String(r.id));
             if (job) { job.aiScore = r.score; job.aiLabel = r.label; job.aiReason = r.reason; job.aiPriority = r.priority; }
           });
           saveJobs(jobs);
@@ -3558,7 +3849,227 @@ async function triggerAgentAfterImport(newJobs) {
   // Also run once more after a short delay to handle any late-rendering
   setTimeout(copyBookmarklet, 800);
 })();
-console.log("🚀 Amretha's Job Hunt Command Centre loaded!");
+// ─── PROFILE MANAGEMENT ─────────────────────────────────────────────
+let _currentProfile = null;
+let _profileIsDefault = true;
+
+async function loadCurrentProfile() {
+  try {
+    const r = await fetch('/api/profile/load');
+    const d = await r.json();
+    _currentProfile = d.profile;
+    _profileIsDefault = d.is_default;
+    renderProfileStatus();
+    renderProfilePreview();
+    // auto-fill autonomous agent keywords from profile headline
+    if (_currentProfile && _currentProfile.headline) {
+      const kw = document.getElementById('autoAgentKw');
+      if (kw && !kw.value) kw.value = _currentProfile.headline.split('|').map(s=>s.trim()).slice(0,2).join(', ');
+    }
+  } catch(e) {
+    console.warn('Profile load error:', e);
+  }
+}
+
+function renderProfileStatus() {
+  const el = document.getElementById('profileStatus');
+  if (!el) return;
+  if (_profileIsDefault) {
+    el.style.background = 'var(--blue-pale)';
+    el.style.color = 'var(--blue)';
+    el.innerHTML = '🔵 Using <strong>default profile</strong> (Amretha Karthikeyan). Paste your resume below to set your own profile.';
+  } else {
+    el.style.background = 'var(--green-pale, #e8faf0)';
+    el.style.color = 'var(--green, #059669)';
+    el.innerHTML = `🟢 Using <strong>custom profile</strong>: ${_currentProfile?.name || 'Custom User'}`;
+  }
+}
+
+function renderProfilePreview() {
+  const wrap = document.getElementById('profilePreview');
+  const content = document.getElementById('profilePreviewContent');
+  if (!wrap || !content || !_currentProfile) { if(wrap) wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  const p = _currentProfile;
+  let html = `<strong>${p.name || '—'}</strong><br>`;
+  if (p.headline) html += `<em>${p.headline}</em><br>`;
+  if (p.email) html += `📧 ${p.email}`;
+  if (p.mobile) html += ` &nbsp;|&nbsp; 📱 ${p.mobile}`;
+  html += '<br>';
+  if (p.linkedin) html += `🔗 <a href="${p.linkedin}" target="_blank">LinkedIn</a><br>`;
+  if (p.summary) html += `<br><strong>Summary:</strong> ${p.summary.substring(0,200)}...<br>`;
+  if (p.skills && p.skills.length) html += `<br><strong>Skills:</strong> ${Array.isArray(p.skills)?p.skills.join(', '):p.skills}<br>`;
+  if (p.experience && p.experience.length) html += `<br><strong>Experience:</strong> ${p.experience.length} role(s)<br>`;
+  if (p.education && p.education.length) html += `<strong>Education:</strong> ${p.education.length} entry(ies)<br>`;
+  content.innerHTML = html;
+}
+
+async function parseAndSaveProfile() {
+  const txt = document.getElementById('profileResumeText').value.trim();
+  if (!txt || txt.length < 50) { showToast('Please paste a meaningful resume (at least 50 characters)','warning'); return; }
+  const btn = document.getElementById('profileParseBtn');
+  btn.disabled = true; btn.textContent = '🤖 Parsing with AI...';
+  try {
+    // Step 1: AI parse
+    const r1 = await fetch('/api/profile/parse-resume', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text: txt })
+    });
+    const d1 = await r1.json();
+    if (!d1.success) throw new Error(d1.error || 'Parse failed');
+    const profile = d1.profile;
+    // Step 2: Save
+    btn.textContent = '💾 Saving profile...';
+    const r2 = await fetch('/api/profile/save', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(profile)
+    });
+    const d2 = await r2.json();
+    if (!d2.success) throw new Error(d2.error || 'Save failed');
+    _currentProfile = d2.profile;
+    _profileIsDefault = false;
+    renderProfileStatus();
+    renderProfilePreview();
+    showToast('✅ Profile parsed and saved successfully!','success');
+    document.getElementById('profileResumeText').value = '';
+  } catch(e) {
+    showToast('❌ ' + e.message,'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '🤖 AI Parse & Save Profile';
+  }
+}
+
+async function resetProfile() {
+  if (!confirm('Reset to default profile (Amretha)? Your custom profile will be removed.')) return;
+  try {
+    await fetch('/api/profile/reset', { method: 'POST' });
+    await loadCurrentProfile();
+    showToast('Profile reset to default','info');
+    document.getElementById('profileEditForm').style.display = 'none';
+  } catch(e) {
+    showToast('Reset error: ' + e.message, 'error');
+  }
+}
+
+function editProfileManually() {
+  const f = document.getElementById('profileEditForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  if (f.style.display === 'block' && _currentProfile) {
+    document.getElementById('profName').value = _currentProfile.name || '';
+    document.getElementById('profEmail').value = _currentProfile.email || '';
+    document.getElementById('profMobile').value = _currentProfile.mobile || '';
+    document.getElementById('profLinkedin').value = _currentProfile.linkedin || '';
+    document.getElementById('profHeadline').value = _currentProfile.headline || '';
+    document.getElementById('profSummary').value = _currentProfile.summary || '';
+    document.getElementById('profSkills').value = Array.isArray(_currentProfile.skills) ? _currentProfile.skills.join(', ') : (_currentProfile.skills||'');
+    document.getElementById('profCert').value = _currentProfile.certification || '';
+  }
+}
+
+async function saveProfileManually() {
+  const profile = Object.assign({}, _currentProfile || {}, {
+    name: document.getElementById('profName').value.trim(),
+    email: document.getElementById('profEmail').value.trim(),
+    mobile: document.getElementById('profMobile').value.trim(),
+    linkedin: document.getElementById('profLinkedin').value.trim(),
+    headline: document.getElementById('profHeadline').value.trim(),
+    summary: document.getElementById('profSummary').value.trim(),
+    skills: document.getElementById('profSkills').value.split(',').map(s=>s.trim()).filter(Boolean),
+    certification: document.getElementById('profCert').value.trim()
+  });
+  if (!profile.name) { showToast('Name is required','warning'); return; }
+  try {
+    const r = await fetch('/api/profile/save', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(profile)
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'Save failed');
+    _currentProfile = d.profile;
+    _profileIsDefault = false;
+    renderProfileStatus();
+    renderProfilePreview();
+    document.getElementById('profileEditForm').style.display = 'none';
+    showToast('✅ Profile saved!','success');
+  } catch(e) {
+    showToast('Save error: ' + e.message,'error');
+  }
+}
+
+// ─── AUTONOMOUS AGENT ───────────────────────────────────────────────
+async function runAutonomousAgent() {
+  const btn = document.getElementById('autoAgentBtn');
+  const logWrap = document.getElementById('autoAgentLog');
+  const logContent = document.getElementById('autoAgentLogContent');
+  btn.disabled = true;
+  btn.textContent = '⏳ Starting autonomous pipeline...';
+  logWrap.style.display = 'block';
+  logContent.textContent = '> Initiating autonomous pipeline...\n';
+
+  const platforms = [];
+  if (document.getElementById('autoPlatIndeed')?.checked) platforms.push('indeed');
+  if (document.getElementById('autoPlatJobStreet')?.checked) platforms.push('jobstreet');
+  if (document.getElementById('autoPlatWorkable')?.checked) platforms.push('workable');
+  if (document.getElementById('autoPlatLinkedIn')?.checked) platforms.push('linkedin');
+
+  const config = {
+    keywords: document.getElementById('autoAgentKw').value.trim() || undefined,
+    location: document.getElementById('autoAgentLoc').value.trim() || 'Singapore',
+    max_days: parseInt(document.getElementById('autoAgentDays').value) || 30,
+    platforms: platforms
+  };
+
+  try {
+    const r = await fetch('/api/agent/autonomous', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(config)
+    });
+    const d = await r.json();
+    if (d.status === 'started') {
+      logContent.textContent += '> Pipeline started in background!\n> Task ID: ' + (d.task_id||'bg') + '\n';
+      logContent.textContent += '> Polling for status...\n';
+      // Poll agent status
+      pollAutonomousStatus(logContent);
+    } else {
+      logContent.textContent += '> Error: ' + (d.error || JSON.stringify(d)) + '\n';
+    }
+  } catch(e) {
+    logContent.textContent += '> Network error: ' + e.message + '\n';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Run Full Autonomous Pipeline';
+  }
+}
+
+function pollAutonomousStatus(logEl) {
+  let polls = 0;
+  const maxPolls = 120; // 10 min max
+  const interval = setInterval(async () => {
+    polls++;
+    try {
+      const r = await fetch('/api/agent/status');
+      const d = await r.json();
+      const running = d.running;
+      const processed = d.processed || 0;
+      const total = d.total || 0;
+      logEl.textContent += `> [Poll ${polls}] Running: ${running}, Progress: ${processed}/${total}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+      if (!running || polls >= maxPolls) {
+        clearInterval(interval);
+        logEl.textContent += running ? '> Polling timeout. Agent may still be running.\n' : '> ✅ Pipeline complete!\n';
+        // Refresh the jobs table
+        if (typeof loadJobs === 'function') loadJobs();
+      }
+    } catch(e) {
+      logEl.textContent += `> Poll error: ${e.message}\n`;
+    }
+  }, 5000);
+}
+
+// Load profile on startup
+loadCurrentProfile();
+
+console.log("🚀 Job Hunt Command Centre loaded!");
 </script>
 </body>
 </html>
