@@ -1094,6 +1094,11 @@ TWILIO_ACCOUNT_SID   = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN    = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # Twilio sandbox
 
+def _get_twilio_sid():   return os.environ.get("TWILIO_ACCOUNT_SID", "") or get_setting("TWILIO_ACCOUNT_SID")
+def _get_twilio_token(): return os.environ.get("TWILIO_AUTH_TOKEN", "") or get_setting("TWILIO_AUTH_TOKEN")
+def _get_whatsapp_to():  return os.environ.get("NOTIFICATION_PHONE", "") or get_setting("NOTIFICATION_PHONE")
+
+
 def send_whatsapp(message):
     """Send a WhatsApp message via Twilio API."""
     sid   = _get_twilio_sid()
@@ -1464,9 +1469,10 @@ def get_config_value(key):
 @app.route("/api/agent/status", methods=["GET"])
 def agent_status():
     """Return counts of processed vs pending jobs."""
+    empty = {"total": 0, "with_jd": 0, "scored": 0, "with_docs": 0, "pending": 0}
     sb = get_supabase()
     if not sb:
-        return jsonify({"error": "Supabase not configured"}), 400
+        return jsonify(empty)
     try:
         res  = sb.table("jobs").select("id,aiScore,resume_docx_b64,jd").execute()
         jobs = res.data or []
@@ -1478,7 +1484,7 @@ def agent_status():
             "pending":   sum(1 for j in jobs if j.get("aiScore") is None),
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify(empty)
 
 
 
@@ -1504,16 +1510,32 @@ def get_setting(key):
         pass
     return ""
 
+def ensure_settings_table():
+    """Create settings table if it does not exist."""
+    sb = get_supabase()
+    if not sb: return
+    try:
+        sb.table("settings").select("key").limit(1).execute()
+    except Exception:
+        # Table missing — create it via raw SQL through Supabase RPC if available
+        try:
+            sb.rpc("exec_sql", {"query": "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW())"}).execute()
+        except Exception as e2:
+            print(f"[Settings] Could not auto-create table: {e2}")
+
+
 def upsert_setting(key, value):
     """Save a setting to Supabase settings table."""
     try:
         sb = get_supabase()
         if not sb:
+            print("[Settings] No Supabase client")
             return False
-        sb.table("settings").upsert({"key": key, "value": value}, on_conflict="key").execute()
+        result = sb.table("settings").upsert({"key": key, "value": value}, on_conflict="key").execute()
+        print(f"[Settings] Saved {key}: {result}")
         return True
     except Exception as e:
-        print(f"Settings upsert error: {e}")
+        print(f"[Settings] upsert error for {key}: {e}")
         return False
 
 @app.route("/api/settings/save", methods=["POST"])
@@ -1522,12 +1544,16 @@ def save_settings():
     secret = data.get("secret", "")
     if secret != AGENT_CRON_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
-    saved = []
+    saved  = []
+    failed = []
     for key in ["LINKEDIN_EMAIL", "LINKEDIN_PASSWORD", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "NOTIFICATION_PHONE"]:
         val = data.get(key, "").strip()
         if val:
-            upsert_setting(key, val)
-            saved.append(key)
+            ok = upsert_setting(key, val)
+            (saved if ok else failed).append(key)
+    if failed:
+        return jsonify({"status": "partial", "saved": saved, "failed": failed,
+                        "error": f"Could not save {failed} — make sure the settings table exists in Supabase (run supabase_setup.sql)"})
     return jsonify({"status": "ok", "saved": saved})
 
 @app.route("/api/settings/load", methods=["GET"])
