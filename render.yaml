@@ -2,11 +2,9 @@ services:
   - type: web
     name: job-hunt-app
     runtime: python
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt && npm install
+    buildCommand: pip install -r requirements.txt && npm install
     startCommand: gunicorn wsgi:app
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: SUPABASE_URL
@@ -28,7 +26,7 @@ services:
     name: job-agent-daily
     runtime: python
     schedule: "0 9 * * *"
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: >
       python -c "
       import requests, os;
@@ -39,8 +37,6 @@ services:
       print(r.json())
       "
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
       - key: AGENT_CRON_SECRET
         value: "jobhunt2025"
       - key: RENDER_EXTERNAL_URL
