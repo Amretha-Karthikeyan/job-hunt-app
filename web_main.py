@@ -1505,16 +1505,25 @@ VISA OVERRIDE: if JD says no sponsorship/must be citizen or PR → score=0, labe
 Return ONLY a JSON array, no other text:
 [{"id":"<job_id>","score":<1-10>,"label":"🔥 Strong Match|✅ Good Fit|🟡 Possible|❌ Weak Fit","reason":"<2 sentences>","priority":"Apply Today|Apply This Week|Lower Priority|Skip"}]"""
 
-    # Batch into groups of 8 to stay well within Groq token limits
-    BATCH_SIZE   = 8
+    import time as _time
+    # Groq free tier: 30 req/min for llama-3.3-70b
+    # Use batch of 15 jobs, 2s delay between batches = safe at any volume
+    BATCH_SIZE   = 15
     all_rankings = []
+    batch_num    = 0
 
     for batch_start in range(0, len(jobs), BATCH_SIZE):
         batch = jobs[batch_start : batch_start + BATCH_SIZE]
+        batch_num += 1
+
+        # Rate limit: wait 3s between batches (= max 20 req/min, well under 30)
+        if batch_num > 1:
+            print(f"[rank_jobs] Waiting 3s to respect Groq rate limit...")
+            _time.sleep(3)
 
         job_block = ""
         for j in batch:
-            jd = (j.get("jd") or "")[:250]
+            jd = (j.get("jd") or "")[:200]
             job_block += f"ID:{j.get('id')} | {j.get('role','?')} @ {j.get('company','?')}\nJD: {jd if jd else 'None'}\n---\n"
 
         prompt = f"""{CANDIDATE_BLOCK}
@@ -1523,26 +1532,35 @@ JOBS:
 {job_block}
 {SCORING_RULES}"""
 
-        print(f"[rank_jobs] Batch {batch_start//BATCH_SIZE+1}: {len(batch)} jobs, prompt ~{len(prompt)} chars")
+        print(f"[rank_jobs] Batch {batch_num}/{(len(jobs)+BATCH_SIZE-1)//BATCH_SIZE}: {len(batch)} jobs, prompt ~{len(prompt)} chars")
         result = call_claude(prompt, max_tokens=2048)
-        print(f"[rank_jobs] Raw response: {result[:300]}")
+        print(f"[rank_jobs] Raw response: {result[:200]}")
 
         if not result or result.startswith("Error:") or result.startswith("API error:"):
-            # Return partial results if we have some, otherwise error
-            if all_rankings:
-                break
-            return jsonify({"error": f"AI API error: {result}"}), 500
+            if "rate limit" in (result or "").lower():
+                # Hit rate limit mid-way — wait 65s and retry this batch once
+                print("[rank_jobs] Rate limit hit — waiting 65s then retrying...")
+                _time.sleep(65)
+                result = call_claude(prompt, max_tokens=2048)
+                if not result or result.startswith("Error:"):
+                    if all_rankings:
+                        break  # return what we have
+                    return jsonify({"error": f"AI API error: {result}"}), 500
+            else:
+                if all_rankings:
+                    break
+                return jsonify({"error": f"AI API error: {result}"}), 500
 
         try:
             clean = _re.sub(r"```json|```", "", result).strip()
-            m     = _re.search(r"(\[.*?\])", clean, _re.DOTALL)
+            m     = _re.search(r"(\[.*\])", clean, _re.DOTALL)
             if m:
                 clean = m.group(1)
             batch_rankings = _json.loads(clean)
             all_rankings.extend(batch_rankings)
+            print(f"[rank_jobs] Batch {batch_num} parsed OK: {len(batch_rankings)} rankings")
         except Exception as e:
-            print(f"[rank_jobs] Parse error on batch {batch_start}: {e}\nRaw: {result[:500]}")
-            # Skip bad batch, continue with others
+            print(f"[rank_jobs] Parse error batch {batch_num}: {e}\nRaw: {result[:300]}")
             continue
 
     if not all_rankings:
