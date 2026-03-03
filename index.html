@@ -3460,7 +3460,6 @@ function copyBookmarklet() {
  'window.__jtRunning=true;' +
  'var u=location.href;' +
 
- // SINGLE JOB MODE
  'if(u.indexOf("my-items")===-1&&u.indexOf("saved-jobs")===-1){' +
  'var t="",c="",jd="";' +
  'var titleSels=["h1[class*=job-title]","h1[class*=topcard]","h1"];' +
@@ -3481,10 +3480,9 @@ function copyBookmarklet() {
  'window.__jtRunning=false;return;' +
  '}' +
 
- // BULK MODE overlay
  'var ov=document.createElement("div");' +
  'ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;";' +
- 'ov.innerHTML='<div style="background:#fff;border-radius:16px;padding:28px 36px;max-width:440px;width:90%;text-align:center;"><div style="font-size:32px;margin-bottom:8px;">&#128220;</div><div style="font-weight:700;color:#0a66c2;font-size:17px;margin-bottom:8px;">LinkedIn Job Importer</div><div id="jt-msg" style="font-size:13px;color:#444;margin-bottom:14px;min-height:18px;">Starting...</div><div style="background:#e8f0fe;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px;"><div id="jt-bar" style="background:#0a66c2;height:100%;width:2%;transition:width 0.4s;border-radius:8px;"></div></div><div id="jt-count" style="font-size:13px;font-weight:600;color:#0a66c2;margin-bottom:6px;">0 jobs found</div><div id="jt-debug" style="font-size:10px;color:#888;margin-bottom:12px;max-height:60px;overflow:auto;"></div><button id="jt-cancel" style="padding:6px 18px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button></div>';' +
+ 'ov.innerHTML=\'<div style="background:#fff;border-radius:16px;padding:28px 36px;max-width:440px;width:90%;text-align:center;"><div style="font-size:32px;margin-bottom:8px;">&#128220;</div><div style="font-weight:700;color:#0a66c2;font-size:17px;margin-bottom:8px;">LinkedIn Job Importer</div><div id="jt-msg" style="font-size:13px;color:#444;margin-bottom:14px;min-height:18px;">Starting...</div><div style="background:#e8f0fe;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px;"><div id="jt-bar" style="background:#0a66c2;height:100%;width:2%;transition:width 0.4s;border-radius:8px;"></div></div><div id="jt-count" style="font-size:13px;font-weight:600;color:#0a66c2;margin-bottom:6px;">0 jobs found</div><div id="jt-debug" style="font-size:10px;color:#888;margin-bottom:12px;max-height:60px;overflow:auto;"></div><button id="jt-cancel" style="padding:6px 18px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:12px;">Cancel</button></div>\';' +
  'document.body.appendChild(ov);' +
  'var msg=document.getElementById("jt-msg"),bar=document.getElementById("jt-bar"),cnt=document.getElementById("jt-count"),dbg=document.getElementById("jt-debug");' +
  'var cancelled=false;' +
@@ -3492,13 +3490,11 @@ function copyBookmarklet() {
  'function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}' +
  'function log(s){console.log("[JT]",s);dbg.innerHTML+=s+"<br>";dbg.scrollTop=dbg.scrollHeight;}' +
 
- // CSRF
  'var csrf=document.cookie.match(/JSESSIONID="?([^;"]+)/);' +
  'if(!csrf){msg.textContent="No session found. Please log in to LinkedIn.";setTimeout(function(){ov.remove();window.__jtRunning=false;},3000);return;}' +
  'var hd={"Accept":"application/vnd.linkedin.normalized+json+2.1","x-restli-protocol-version":"2.0.0","csrf-token":csrf[1],"x-li-lang":"en_US","x-li-track":JSON.stringify({clientVersion:"1.13.5029"})};' +
  'log("CSRF ok. Testing API endpoints...");' +
 
- // Try multiple endpoints and pick the one that works
  'var workingEndpoint=null,workingData=null;' +
  'var testEndpoints=[' +
  '"/voyager/api/voyagerJobsDashSavedJobsByMember?count=10&start=0&q=savedJobsByMember",' +
@@ -3522,7 +3518,6 @@ function copyBookmarklet() {
  '}catch(e){log("→ error: "+e.message);}' +
  '}' +
 
- // If no API endpoint works, fall back to DOM scraping
  'var allJobs=[],seenIds={};' +
  'if(!workingEndpoint||cancelled){' +
  'log("No API worked — using DOM scroll scraper");' +
@@ -3552,11 +3547,9 @@ function copyBookmarklet() {
  '}' +
  '} else {' +
 
- // API pagination
  'msg.textContent="Fetching all saved jobs via API...";' +
  'var start=0,pageSize=40,totalKnown=0,maxPages=20;' +
  'var baseUrl=workingEndpoint;' +
- // Process first page we already fetched
  'async function processPage(pd){' +
  'var elems=pd.elements||pd.included||[];' +
  'if(!elems.length&&pd.data){for(var k in pd.data){if(pd.data[k]&&pd.data[k].elements){elems=pd.data[k].elements;if(pd.data[k].paging&&pd.data[k].paging.total)totalKnown=pd.data[k].paging.total;break;}}}' +
@@ -3603,12 +3596,10 @@ function copyBookmarklet() {
 
  'if(!allJobs.length){alert("No jobs found.\\n\\nCheck the debug log in the importer window for details.\\nMake sure you are on https://www.linkedin.com/my-items/saved-jobs/");ov.remove();window.__jtRunning=false;return;}' +
 
- // POST to server
  'bar.style.width="85%";msg.textContent="Saving "+allJobs.length+" jobs to tracker...";' +
  'try{await fetch("' + appUrl + '/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:allJobs,secret:"jobhunt2025"})});}catch(pe){log("POST failed:"+pe);}' +
  'await sleep(400);' +
 
- // Redirect
  'bar.style.width="100%";msg.textContent="Done! Importing "+allJobs.length+" jobs...";' +
  'try{var enc=btoa(unescape(encodeURIComponent(JSON.stringify(allJobs))));ov.remove();window.__jtRunning=false;location.href="' + appUrl + '/#bm:"+enc;}' +
  'catch(e){ov.remove();window.__jtRunning=false;alert("Error: "+e.message);}' +
