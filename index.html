@@ -562,6 +562,30 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 /* Checkbox dark theme */
 input[type="checkbox"] { accent-color: var(--accent-purple); }
 </style>
+<script>
+// Early-load bookmarklet copy functions — defined before body so always available
+function copyBookmarkletToClipboard() {
+ var code = window.__bookmarkletCode;
+ if (!code && typeof copyBookmarklet === 'function') { copyBookmarklet(); code = window.__bookmarkletCode; }
+ if (!code) { alert('Bookmarklet not ready — please refresh and try again.'); return; }
+ var btn = document.getElementById('copyBmBtn');
+ var status = document.getElementById('copyBmStatus');
+ function onSuccess() {
+  if (btn) { btn.textContent = '✓ Copied!'; setTimeout(function(){ btn.textContent = 'Copy Bookmarklet'; }, 3000); }
+  if (status) { status.textContent = '✓ Copied! Right-click bookmarks bar → Add bookmark → paste as URL'; }
+ }
+ if (navigator.clipboard) {
+  navigator.clipboard.writeText(code).then(onSuccess).catch(function() { fallbackCopy(code, onSuccess); });
+ } else { fallbackCopy(code, onSuccess); }
+}
+function fallbackCopy(text, cb) {
+ var ta = document.createElement('textarea');
+ ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+ document.body.appendChild(ta); ta.select();
+ try { document.execCommand('copy'); if(cb) cb(); } catch(e) { prompt('Copy this:', text); }
+ document.body.removeChild(ta);
+}
+</script>
 </head>
 <body>
 <!-- HEADER -->
@@ -4374,33 +4398,6 @@ function pollAutonomousStatus(logEl) {
 loadCurrentProfile();
 console.log("[JH v9] Job Hunt Command Centre loaded!");
 </script>
-<script>
-// Isolated script block for bookmarklet copy — works even if main script fails
-function copyBookmarkletToClipboard() {
- var code = window.__bookmarkletCode;
- if (!code && typeof copyBookmarklet === 'function') { copyBookmarklet(); code = window.__bookmarkletCode; }
- if (!code) { alert('Bookmarklet not ready — please refresh the page and try again.'); return; }
- var btn = document.getElementById('copyBmBtn');
- var status = document.getElementById('copyBmStatus');
- function onSuccess() {
-  if (btn) { btn.textContent = ' Copied!'; setTimeout(function(){ btn.textContent = ' Copy Bookmarklet'; }, 3000); }
-  if (status) { status.textContent = ' Copied! Now right-click your bookmarks bar → Add bookmark → paste as the URL'; }
- }
- if (navigator.clipboard) {
-  navigator.clipboard.writeText(code).then(onSuccess).catch(function() { fallbackCopy(code, onSuccess); });
- } else { fallbackCopy(code, onSuccess); }
-}
-function fallbackCopy(text, cb) {
- var box = document.getElementById('bookmarkletBox');
- if (box) { box.select(); try { document.execCommand('copy'); if(cb) cb(); } catch(e) { prompt('Copy all of this:', text); } }
- else { prompt('Copy all of this:', text); }
-}
-// Attach click handler (no inline onclick needed)
-document.addEventListener('DOMContentLoaded', function() {
- var btn = document.getElementById('copyBmBtn');
- if (btn) btn.addEventListener('click', copyBookmarkletToClipboard);
- console.log('[JH v10] Bookmarklet functions loaded OK');
-});
-</script>
+
 </body>
 </html>
