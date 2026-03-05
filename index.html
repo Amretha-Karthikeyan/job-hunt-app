@@ -590,92 +590,108 @@ function fallbackCopy(text, cb) {
 
 function copyBookmarklet() {
  var appUrl = window.location.origin;
- // Build bookmarklet as a template string to avoid escaping nightmares
- var bm = [
-  '(async function(){',
-  'if(window.__jtRunning){alert("Already running");return;}',
-  'window.__jtRunning=true;',
-  'var u=location.href;',
-  // Single job mode
-  'if(u.indexOf("my-items")===-1&&u.indexOf("saved-jobs")===-1){',
-  '  var jm=u.match(/\\/jobs\\/view\\/(\\d+)/);',
-  '  if(!jm){alert("Open this on a LinkedIn job page or saved jobs page");window.__jtRunning=false;return;}',
-  '  var card=document.querySelector(".job-details-jobs-unified-top-card__job-title,h1");',
-  '  var t=card?card.innerText.trim():document.title.replace(/\\s*[|\\-].*$/,"").trim();',
-  '  var co=document.querySelector("[class*=job-details-jobs-unified-top-card__company-name] a,[class*=topcard__org-name-link]");',
-  '  var c=co?co.innerText.trim():"Unknown";',
-  '  var jdEl=document.querySelector("#job-details,[class*=jobs-description__content]");',
-  '  var jd=jdEl?jdEl.innerText.trim():"";',
-  '  if(!t){alert("Could not read job title");window.__jtRunning=false;return;}',
-  '  var single=[{role:t,company:c,url:u.split("?")[0],linkedInId:"li_"+jm[1],jd:jd,source:"LinkedIn",status:"saved"}];',
-  '  try{await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:single,secret:"jobhunt2025"})});}catch(e){}',
-  '  var enc=btoa(unescape(encodeURIComponent(JSON.stringify(single))));',
-  '  location.href="APPURL/#bm:"+enc;',
-  '  window.__jtRunning=false;return;',
-  '}',
-  // Bulk mode overlay
-  'var ov=document.createElement("div");',
-  'ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;";',
-  'var box=document.createElement("div");',
-  'box.style.cssText="background:#fff;border-radius:16px;padding:28px 36px;max-width:420px;width:90%;text-align:center;";',
-  'var icon=document.createElement("div");icon.textContent="📋";icon.style.cssText="font-size:32px;margin-bottom:8px;";box.appendChild(icon);',
-  'var ttl=document.createElement("div");ttl.textContent="LinkedIn Job Importer";ttl.style.cssText="font-weight:700;color:#0a66c2;font-size:17px;margin-bottom:8px;";box.appendChild(ttl);',
-  'var msg=document.createElement("div");msg.id="jt-msg";msg.style.cssText="font-size:13px;color:#444;margin-bottom:14px;min-height:18px;";msg.textContent="Starting...";box.appendChild(msg);',
-  'var bw=document.createElement("div");bw.style.cssText="background:#e8f0fe;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px;";',
-  'var bar=document.createElement("div");bar.id="jt-bar";bar.style.cssText="background:#0a66c2;height:100%;width:2%;transition:width 0.4s;border-radius:8px;";bw.appendChild(bar);box.appendChild(bw);',
-  'var cnt=document.createElement("div");cnt.id="jt-count";cnt.style.cssText="font-size:13px;font-weight:600;color:#0a66c2;margin-bottom:12px;";cnt.textContent="0 jobs found";box.appendChild(cnt);',
-  'var cbtn=document.createElement("button");cbtn.textContent="Cancel";cbtn.style.cssText="padding:6px 18px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:12px;";box.appendChild(cbtn);',
-  'ov.appendChild(box);document.body.appendChild(ov);',
-  'var cancelled=false;cbtn.onclick=function(){cancelled=true;ov.remove();window.__jtRunning=false;};',
-  'function sleep(ms){return new Promise(function(r){setTimeout(r,ms);})}',
-  // Scraper
-  'var seen={};var jobs=[];',
-  'function scrape(){',
-  '  document.querySelectorAll("a[href*=\\"/jobs/view/\\"]").forEach(function(a){',
-  '    var href=a.href.split("?")[0].split("#")[0];',
-  '    if(!href||seen[href])return;seen[href]=true;',
-  '    var card=a;for(var up=0;up<8;up++){if(!card.parentElement)break;card=card.parentElement;if(card.tagName==="LI"||card.offsetHeight>80)break;}',
-  '    var t=(a.innerText||"").trim();',
-  '    if(t.length<3){var hs=card.querySelectorAll("[class*=title],strong,h3,h4");for(var hi=0;hi<hs.length;hi++){var tx=hs[hi].innerText.trim();if(tx.length>2&&tx.length<150){t=tx;break;}}}',
-  '    var skip=/^(Singapore|Remote|Hybrid|\\d+\\s*(day|week|hour|min)|ago|Save|Saved|Easy|Applied|Promoted)/i;',
-  '    var co="Unknown";',
-  '    var cels=card.querySelectorAll("[class*=company-name],[class*=primary-description],[class*=subtitle]");',
-  '    for(var ci=0;ci<cels.length;ci++){var cx=cels[ci].innerText.trim();if(cx&&cx.length>1&&cx.length<100&&cx!==t&&!skip.test(cx)){co=cx;break;}}',
-  '    var jm2=href.match(/\\/jobs\\/view\\/(\\d+)/);',
-  '    var lid=jm2?"li_"+jm2[1]:"";',
-  '    if(t.length>1)jobs.push({role:t,company:co,url:href,linkedInId:lid,source:"LinkedIn",status:"saved",jd:""});',
-  '  });',
-  '}',
-  // Scroll loop
-  'window.scrollTo(0,0);await sleep(800);scrape();',
-  'var noNew=0;',
-  'for(var pass=0;pass<80&&!cancelled;pass++){',
-  '  var before=jobs.length;',
-  '  window.scrollBy(0,700);await sleep(600);',
-  '  scrape();',
-  '  cnt.textContent=jobs.length+" jobs found";',
-  '  bar.style.width=Math.min(85,5+pass)+"%";',
-  '  msg.textContent="Scanning... pass "+(pass+1);',
-  '  if(jobs.length===before)noNew++;else noNew=0;',
-  '  if(noNew>=8)break;',
-  '}',
-  'if(!jobs.length){alert("No jobs found — make sure you are on linkedin.com/my-items/saved-jobs/");ov.remove();window.__jtRunning=false;return;}',
-  'msg.textContent="Sending "+jobs.length+" jobs to tracker...";bar.style.width="92%";',
-  'try{await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:jobs,secret:"jobhunt2025"})});}catch(pe){}',
-  'await sleep(300);',
-  'var enc2=btoa(unescape(encodeURIComponent(JSON.stringify(jobs))));',
-  'ov.remove();window.__jtRunning=false;',
-  'location.href="APPURL/#bm:"+enc2;',
-  '})();'
- ].join('');
- bm = bm.split('APPURL').join(appUrl);
- var code = 'javascript:' + bm;
- var box2 = document.getElementById('bookmarkletBox');
- if (box2) box2.value = code;
- var link = document.getElementById('bookmarkletLink');
- if (link) link.href = code;
- var dragBtn = document.getElementById('bookmarkletDragBtn');
- if (dragBtn) dragBtn.href = code;
+ // Build as array to avoid any string escaping issues
+ // IMPORTANT: No regex literals (/ / causes issues), use new RegExp() instead
+ var p = [];
+ p.push('(async function(){');
+ p.push('if(window.__jtRunning){alert("Already running");return;}');
+ p.push('window.__jtRunning=true;');
+ p.push('var u=location.href;');
+ p.push('var isMyItems=u.indexOf("my-items")>-1||u.indexOf("saved-jobs")>-1;');
+
+ // Single job mode
+ p.push('if(!isMyItems){');
+ p.push('var jobRe=new RegExp("jobs/view/(\\\\d+)");');
+ p.push('var jm=u.match(jobRe);');
+ p.push('if(!jm){alert("Go to a LinkedIn job page or saved-jobs page");window.__jtRunning=false;return;}');
+ p.push('var h1=document.querySelector("h1");');
+ p.push('var t=h1?h1.innerText.trim():document.title.split("|")[0].trim();');
+ p.push('var coEl=document.querySelector(".job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link");');
+ p.push('var c=coEl?coEl.innerText.trim():"Unknown";');
+ p.push('var jdEl=document.querySelector("#job-details,.jobs-description__content");');
+ p.push('var jd=jdEl?jdEl.innerText.trim():"";');
+ p.push('if(!t){alert("Could not read job title");window.__jtRunning=false;return;}');
+ p.push('var single=[{role:t,company:c,url:u.split("?")[0],linkedInId:"li_"+jm[1],jd:jd,source:"LinkedIn",status:"saved"}];');
+ p.push('try{await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:single,secret:"jobhunt2025"})});}catch(e){}');
+ p.push('location.href="APPURL/#bm:"+btoa(unescape(encodeURIComponent(JSON.stringify(single))));');
+ p.push('window.__jtRunning=false;return;}');
+
+ // Overlay UI
+ p.push('var ov=document.createElement("div");');
+ p.push('ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;";');
+ p.push('var bx=document.createElement("div");');
+ p.push('bx.style.cssText="background:#fff;border-radius:16px;padding:28px 36px;max-width:420px;width:90%;text-align:center;";');
+ p.push('var tl=document.createElement("div");tl.textContent="LinkedIn Job Importer";tl.style.cssText="font-weight:700;color:#0a66c2;font-size:17px;margin-bottom:8px;";bx.appendChild(tl);');
+ p.push('var mg=document.createElement("div");mg.id="jt-mg";mg.style.cssText="font-size:13px;color:#444;margin-bottom:14px;";mg.textContent="Starting...";bx.appendChild(mg);');
+ p.push('var bw=document.createElement("div");bw.style.cssText="background:#e8f0fe;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px;";');
+ p.push('var br=document.createElement("div");br.id="jt-br";br.style.cssText="background:#0a66c2;height:100%;width:2%;transition:width 0.4s;border-radius:8px;";bw.appendChild(br);bx.appendChild(bw);');
+ p.push('var ct=document.createElement("div");ct.style.cssText="font-size:13px;font-weight:600;color:#0a66c2;margin-bottom:12px;";ct.textContent="0 jobs found";bx.appendChild(ct);');
+ p.push('var cb=document.createElement("button");cb.textContent="Cancel";cb.style.cssText="padding:6px 18px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:12px;";bx.appendChild(cb);');
+ p.push('ov.appendChild(bx);document.body.appendChild(ov);');
+ p.push('var cancelled=false;cb.onclick=function(){cancelled=true;ov.remove();window.__jtRunning=false;};');
+ p.push('function sleep(ms){return new Promise(function(r){setTimeout(r,ms);})}');
+
+ // Scraper - using indexOf instead of regex
+ p.push('var seen={};var jobs=[];');
+ p.push('var skipWords=["Remote","Hybrid","On-site","Singapore","Apply","Save","Easy","Promoted","Active","ago","week","day","hour","month"];');
+ p.push('function isSkip(s){if(!s)return true;if(s.length>120)return true;for(var k=0;k<skipWords.length;k++){if(s.indexOf(skipWords[k])===0)return true;}if(s.charAt(0)>="0"&&s.charAt(0)<="9")return true;return false;}');
+ p.push('function getJobs(){');
+ p.push('var links=document.querySelectorAll("a");');
+ p.push('for(var li=0;li<links.length;li++){');
+ p.push('var a=links[li];');
+ p.push('var href=(a.href||"");');
+ p.push('var qi=href.indexOf("?");if(qi>-1)href=href.substring(0,qi);');
+ p.push('var hi2=href.indexOf("#");if(hi2>-1)href=href.substring(0,hi2);');
+ p.push('if(href.indexOf("/jobs/view/")<0)continue;');
+ p.push('if(seen[href])continue;');
+ p.push('seen[href]=true;');
+ p.push('var card=a;');
+ p.push('for(var up=0;up<10;up++){if(!card.parentElement)break;card=card.parentElement;var ch=card.offsetHeight;if(ch>60&&ch<600)break;}');
+ p.push('var t=(a.innerText||a.textContent||"").trim();');
+ p.push('if(t.length<3||t.length>200){');
+ p.push('var hs=card.querySelectorAll("strong,h3,h4,[class*=title]");');
+ p.push('for(var hi=0;hi<hs.length;hi++){var tx=(hs[hi].innerText||"").trim();if(tx.length>2&&tx.length<200){t=tx;break;}}');
+ p.push('}');
+ p.push('var c="Unknown";');
+ p.push('var allLines=(card.innerText||"").split("\\n");');
+ p.push('for(var ti=0;ti<allLines.length;ti++){var ln=allLines[ti].trim();if(ln&&ln!==t&&!isSkip(ln)){c=ln;break;}}');
+ p.push('var jidx=href.indexOf("/jobs/view/")+11;');
+ p.push('var jend=href.indexOf("/",jidx);');
+ p.push('var jid=jend>-1?href.substring(jidx,jend):href.substring(jidx);');
+ p.push('if(t.length>1)jobs.push({role:t,company:c,url:href,linkedInId:jid?"li_"+jid:"",source:"LinkedIn",status:"saved",jd:""});');
+ p.push('}');
+ p.push('}');
+
+ // Scroll loop
+ p.push('window.scrollTo(0,0);await sleep(1000);getJobs();');
+ p.push('ct.textContent=jobs.length+" jobs found";');
+ p.push('var noNew=0;');
+ p.push('for(var pass=0;pass<80&&!cancelled;pass++){');
+ p.push('var before=jobs.length;');
+ p.push('window.scrollBy(0,800);');
+ p.push('await sleep(700);');
+ p.push('getJobs();');
+ p.push('ct.textContent=jobs.length+" jobs found";');
+ p.push('br.style.width=Math.min(88,8+pass)+"%";');
+ p.push('mg.textContent="Scanning... ("+jobs.length+" found)";');
+ p.push('if(jobs.length===before)noNew++;else noNew=0;');
+ p.push('if(noNew>=8)break;');
+ p.push('}');
+ p.push('if(!jobs.length){ov.remove();window.__jtRunning=false;alert("No jobs found. Go to linkedin.com/my-items/saved-jobs/ and try again.");return;}');
+ p.push('mg.textContent="Sending "+jobs.length+" jobs...";br.style.width="93%";');
+ p.push('try{await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:jobs,secret:"jobhunt2025"})});}catch(e){}');
+ p.push('await sleep(400);');
+ p.push('ov.remove();window.__jtRunning=false;');
+ p.push('location.href="APPURL/#bm:"+btoa(unescape(encodeURIComponent(JSON.stringify(jobs))));');
+ p.push('})();');
+
+ var code = 'javascript:' + p.join('').split('APPURL').join(appUrl);
+ var el = document.getElementById('bookmarkletBox');
+ if (el) el.value = code;
+ var lnk = document.getElementById('bookmarkletLink');
+ if (lnk) lnk.href = code;
+ var drag = document.getElementById('bookmarkletDragBtn');
+ if (drag) drag.href = code;
  window.__bookmarkletCode = code;
 }
 
