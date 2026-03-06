@@ -609,8 +609,8 @@ function copyBookmarklet() {
  p.push('var jd=jdEl?jdEl.innerText.trim():"";');
  p.push('if(!t){alert("Could not read job title");window.__jtRunning=false;return;}');
  p.push('var single=[{role:t,company:c,url:u.split("?")[0],linkedInId:"li_"+jm[1],jd:jd,source:"LinkedIn",status:"saved"}];');
- p.push('try{await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:single,secret:"jobhunt2025"})});}catch(e){}');
- p.push('alert("Saved: "+t+" at "+c);window.__jtRunning=false;return;}');
+ p.push('var enc1=btoa(unescape(encodeURIComponent(JSON.stringify(single))));window.open("APPURL/#bm:"+enc1,"_blank");');
+ p.push('window.__jtRunning=false;return;}');
 
  // Overlay UI
  p.push('var ov=document.createElement("div");');
@@ -688,12 +688,12 @@ function copyBookmarklet() {
 
  p.push('if(!jobs.length){ov.remove();window.__jtRunning=false;alert("No jobs found.");return;}');
  p.push('mg.textContent="Sending "+jobs.length+" jobs to tracker...";br.style.width="93%";');
- p.push('var ok=false;');
- p.push('try{var res=await fetch("APPURL/api/linkedin-import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobs:jobs,secret:"jobhunt2025"})});ok=res.ok;}catch(e){}');
- p.push('await sleep(400);');
  p.push('br.style.width="100%";');
- p.push('mg.textContent=ok?"Done! "+jobs.length+" jobs saved.":"Error saving — check tracker.";');
- p.push('mg.style.color=ok?"#16a34a":"#dc2626";');
+ p.push('mg.textContent="Done! "+jobs.length+" jobs ready. Opening tracker...";');
+ p.push('mg.style.color="#16a34a";');
+ p.push('await sleep(800);');
+ p.push('var enc=btoa(unescape(encodeURIComponent(JSON.stringify(jobs))));');
+ p.push('window.open("APPURL/#bm:"+enc,"_blank");');
  p.push('cb.textContent="Close";');
  p.push('window.__jtRunning=false;');
  p.push('})();');
