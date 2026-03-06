@@ -628,8 +628,8 @@ function copyBookmarklet() {
  p.push('function sleep(ms){return new Promise(function(r){setTimeout(r,ms);})}');
 
  p.push('var seen={};var jobs=[];');
- p.push('function scrapeCurrentPage(){');
- p.push('var links=document.querySelectorAll("a");');
+ p.push('function scrapeCurrentPage(){var links=document.querySelectorAll("a");');
+ 
  p.push('for(var li=0;li<links.length;li++){');
  p.push('  var a=links[li];');
  p.push('  var href=(a.href||"").split("?")[0];');
@@ -671,7 +671,7 @@ function copyBookmarklet() {
  p.push('  mg.textContent="Loading page "+page+"...";');
  p.push('  br.style.width=Math.min(88,page*6)+"%";');
  p.push('  var prevHref="";');
- p.push('  for(var pi=0;pi<links.length;pi++){if(links[pi].href&&links[pi].href.indexOf("/jobs/view/")>-1){prevHref=links[pi].href;break;}}');
+ p.push('  var pgLinks=document.querySelectorAll("a");for(var pi=0;pi<pgLinks.length;pi++){if(pgLinks[pi].href&&pgLinks[pi].href.indexOf("/jobs/view/")>-1){prevHref=pgLinks[pi].href;break;}}');
  p.push('  nextBtn.click();');
  p.push('  for(var w=0;w<30;w++){');
  p.push('    await sleep(500);');
@@ -681,7 +681,7 @@ function copyBookmarklet() {
  p.push('    if(gotNew)break;');
  p.push('  }');
  p.push('  await sleep(500);');
- p.push('  links=document.querySelectorAll("a");');
+ 
  p.push('  scrapeCurrentPage();');
  p.push('  ct.textContent=jobs.length+" jobs found";');
  p.push('}');
