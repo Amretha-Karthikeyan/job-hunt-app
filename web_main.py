@@ -530,75 +530,140 @@ def tailor_resume():
 
     num_exp = len(P.get('experience', []))
 
-    prompt = f"""You are an expert ATS-optimised resume writer. Write a COMPLETE, DETAILED resume.
-{framing}
-
-TARGET ROLE: {role_type}
+    prompt = f"""You are an expert ATS resume writer. Write a COMPLETE 2-page resume for {P.get('name','')} targeting: {role_type} at a company matching this JD.
 
 JOB DESCRIPTION:
 {jd}
 
-{"AI ROLE DETECTED: Feature AI projects prominently with URL: " + P.get('aiProjectUrl','') if ai_role else ""}
+{"AI ROLE: Feature this AI project prominently: " + P.get('aiProjectUrl','') if ai_role else ""}
 
-===== CANDIDATE DATA =====
+===== CANDIDATE MASTER DATA (use ALL of this) =====
 Name: {P.get('name','')}
 Phone: {P.get('mobile','')}
 Email: {P.get('email','')}
 LinkedIn: {P.get('linkedin','')}
 Address: {P.get('address','')}
-Headline: {P.get('headline','')}
-Summary: {P.get('summary','')}
-Certification: {P.get('certification','')}
+Certification: SAFe 6.0 Product Owner/Product Management
 
-SKILLS: {skills_text}
+HEADLINE OPTIONS (pick most relevant to JD):
+- Business Analyst Lead | Product Owner | Sales & Operations Excellence
+- Lead Business Analyst / Enterprise Product Owner
+- Digital Product Manager | Product Owner (AI & Data Platforms)
+- Business Analyst Lead | Product Owner | Product Manager
 
-EXPERIENCE ({num_exp} roles — include ALL of them):
-{exp_text}
+SUMMARY OPTIONS (adapt and blend most relevant to JD):
+Option A: Lead Business Analyst with 5+ years of experience supporting senior leadership through business planning, financial operations, and cross-functional project execution. Proven ability to streamline processes, manage executive stakeholder communications, track KPIs, drive operational alignment and cost profitability.
+Option B: Lead Business Analyst / Enterprise Product Owner with 5+ years of experience delivering large-scale enterprise platforms across financial services. Proven expertise in owning product roadmaps, custom-built systems, translating business needs into scalable technical solutions, and driving platform adoption across multiple business units.
+Option C: Digital Product Manager / Product Owner with 5+ years of experience delivering large-scale digital platforms across financial services and enterprise environments. Proven expertise in owning product roadmaps, managing Agile delivery, translating user needs into scalable solutions, and driving data-informed product decisions.
+Option D (Fintech/Revolut-style): Results-driven Product Owner with 5+ years in fintech and banking, skilled in SEO, GEO, and CRO, with expertise in driving website optimisation and owning product roadmaps. Proficient in SAFe 6.0 and Agile, with strong understanding of design best practices and user experience.
+
+SKILLS POOL (use all relevant + add JD keywords):
+Data visualization tools: Tableau, Power BI
+Programming: PSQL, Python basics
+Key Modules in Masters: Financial Planning and Analysis, Operations management
+Others: Management Consulting, Agile, SAFe 6.0, JIRA, Excel, Microsoft Project, Product Vision and road mapping, Business Analysis, Risk Mitigation & Change Management, Budget Forecasting & Variance Analysis, KPI Tracking & Dashboard Reporting, Event & Workshop Facilitation, AI-enabled Product Integration, MVP Definition & Go-To-Market, SEO, GEO, CRO, API integrations, Generative AI, LLM, Prompt Engineering, Stakeholder Management
+
+EXPERIENCE — USE ALL BULLETS BELOW, SELECT MOST JD-RELEVANT ONES:
+
+KPMG, Singapore | Feb 2021 – Present | Lead Business Analyst / Functional Consultant / Digital Product Manager
+Available bullets (pick 6-8 most relevant to JD):
+- Defined and drove product vision, roadmap, and delivery strategy for large-scale digital transformation initiatives for financial institutions
+- Owned and prioritised product backlog, ensuring alignment with business objectives, regulatory requirements and customer experience goals
+- Partnered with Enterprise Singapore / GovTech on large-scale digital transformation projects
+- Supported executive decision-making through As-Is/To-Be analysis and streamlined documentation of strategic processes across finance teams
+- Collaborated with cross-regional stakeholders (UX, architecture, and finance) to drive alignment across engineering and operations functions
+- Managed internal reporting cycles, change requests, and approval workflows contributing to a 5% increase in project profitability
+- Drove product scope decisions through impact analysis, generating ~5% additional business value
+- Led sprint ceremonies including Planning, Reviews, Retros, and PI Planning across a multi-squad programme, resulting in 30% increase in team velocity
+- Managed 3rd party vendors, conducted go-live planning, and led data migrations from legacy systems ensuring 99.9% uptime
+- Designed and executed end-to-end test scenarios on Loan IQ applications resulting in 25% reduction in defects
+- Trained vendors and managed go-live execution plans, ensuring process continuity across business units
+- Conducted internal workshops to drive operational readiness and team-wide coordination
+- Analysed complex problems, root cause analysis and creating innovative solutions with UX, architecture and software solutioning teams. Experience in API integrations
+- Design, document and execute end-to-end test scenarios on Loan IQ Product Applications including M&A, Trade, WCL, FA and raise defects using JIRA
+- Expertise in Monthly Reporting Reconciliation, Exposure Calculation, Commitment & Credit Limit Calculation for Banks, Financial Loan Products, Lending Capital Loans
+- Managing 3rd party vendors and Client Senior Stakeholders, train end users, conducting workshops, Data Migrations from legacy systems
+- Supported sales and distribution process efficiency by streamlining reporting, reducing cycle times, improving customer-facing loan/trade workflows
+- Leading Testers, Interns and Junior Business Analysts for Scrum activities: Planning, Closure and Retro
+- Supported automation and AI-enabled solution design including API integrations, improving efficiency and reducing manual effort by 30 man-days
+- Built business cases and executive presentations for new product features, securing stakeholder approval
+- Drove data-informed product decisions by defining KPIs, analysing performance metrics and identifying product improvement opportunities
+- Worked on E-commerce website analysing customer engagement patterns leading to 5% increase in customer retention
+Key Achievements:
+- Performed accurate Impact Analysis and persuaded clients to approve Change request items, generating additional profit of ~5% of Project Cost
+- Analysed and provided solutioning for Automated Interest computation (financial services), saving 30 man-days of work
+- Led team for interim in critical phase during end of Sprints and beginning of SIT, maintaining project delivery timeline
+
+J.P. Morgan | Oct 2023 – Jan 2024 | Asset Management Virtual Internship
+Available bullets (pick 3-4 most relevant):
+- Gathered product requirements from trading/execution teams to build robust investor profiles using UX/UI design principles
+- Helped traders and clients onboard, build stronger investment portfolios and offered market-leading investment solutions
+- Emailed questionnaires to clients to build robust investor profiles and extract essential information such as investment objectives and risk appetite
+- Performed quantitative fundamental analysis of 5 stocks, recommended to 2 clients based on risk metrics resulting in 10% increase in portfolio value
+- Measured portfolio performance via KPIs: Annual Portfolio Return, Portfolio Variance, Standard Deviation
+
+Amazon Inc, India | Mar 2018 – Mar 2019 | Business Analyst
+Available bullets (pick 2-3 most relevant):
+- Built real-time quality monitoring dashboards using Power BI from SQL Server and MS Excel, resulting in 20% reduction in quality issues
+- Translated business requirements into functional and non-functional specifications ensuring 95% stakeholder satisfaction
+- Worked closely with stakeholders to understand needs, scope problems and develop business cases on turning data into actionable information
+- Analysed and visualised operational data using Tableau and Power BI, resulting in 15% increase in operational efficiency
 
 EDUCATION:
-{edu_text}
+Master of Science Engineering Business Management, Coventry University, UK (Jul 2019 – Nov 2020)
+Bachelor of Engineering Electronics & Communication Engineering, Anna University, India (Jul 2012 – Jun 2016)
+SAFe 6.0 certified Product Owner/Product Management
+===================================================
 
-PROJECTS:
-{proj_text}
-===========================
+OUTPUT FORMAT RULES — FOLLOW EXACTLY:
+1. First line: Amretha Karthikeyan  (just the name, nothing else)
+2. Line 2: #02-321 153 Gangsa Road, Singapore-670153
+3. Line 3: Mobile: +65-90256503, email: amretha.ammu@gmail.com
+4. Line 4: https://www.linkedin.com/in/amretha-nishanth-534b39101/
+5. Line 5: [Most relevant headline from options above]
+6. Blank line
+7. PROFESSIONAL SUMMARY:
+8. [4 sentences, blend from options above, weave in JD keywords]
+9. Blank line
+10. SKILL SET:
+11. Data visualization tools: Tableau, Power BI[+ JD tools]
+12. Programming: PSQL, Python basics[+ JD languages]
+13. Others: [all relevant skills + JD keywords, comma separated]
+14. Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
+15. Blank line
+16. PROFESSIONAL EXPERIENCE:
+17. KPMG, Singapore  Feb 2021 – Present
+18. [Most relevant job title — no slashes at start/end]
+19. - [bullet 1]
+20. - [bullet 2] ... (6-8 bullets)
+21. Key Achievements:
+22. - [achievement 1]
+23. - [achievement 2]
+24. - [achievement 3]
+25. Blank line
+26. J.P. Morgan  Oct 2023 – Jan 2024
+27. Asset Management Virtual Internship
+28. - [3-4 bullets]
+29. Blank line
+30. Amazon Inc, India  Mar 2018 – Mar 2019
+31. Business Analyst
+32. - [2-3 bullets]
+33. Blank line
+34. ACADEMIC QUALIFICATION:
+35. Master of Science Engineering Business Management  Jul 2019 – Nov 2020
+36. Coventry University, UK
+37. Bachelor of Engineering  Jul 2012 – Jun 2016
+38. Electronics & Communication Engineering, Anna University, India
+39. Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
 
-STRICT REQUIREMENTS — 2-PAGE MAXIMUM, ATS-OPTIMISED:
-
-STEP 1 — EXTRACT JD KEYWORDS FIRST:
-Before writing anything, extract from the JD:
-- Job titles/role names used
-- Required tools & technologies (JIRA, Confluence, SQL, Python, etc.)
-- Methodologies (Agile, SAFe, Scrum, Kanban, etc.)
-- Soft skills phrased exactly as in JD (e.g. "stakeholder management", "cross-functional collaboration")
-- Domain terms (fintech, payments, product backlog, roadmap, etc.)
-- Certifications mentioned
-You MUST use these exact phrases throughout the resume.
-
-SECTIONS (in this order):
-1. HEADER: Name, phone, email, LinkedIn — single line each. Max 4 lines.
-2. PROFESSIONAL SUMMARY: Exactly 4 sentences. Sentence 1: years of experience + role type. Sentence 2-3: mirror 3-4 exact JD keywords each. Sentence 4: SAFe certification + target positioning. Max 80 words.
-3. CORE SKILLS: Candidate skills + JD keywords combined. Comma-separated, 3 columns, max 24 skills. Include ALL tools/methodologies from JD.
-4. PROFESSIONAL EXPERIENCE:
-   - Primary role ({P.get('experience',[])[0].get('company','') if P.get('experience') else ''}): 5 bullets max
-   - Each other role: 3 bullets max
-   - Every bullet: action verb + exact JD keyword + metric
-   - Do NOT pad with generic statements
-5. {"PROJECTS: AI project with URL, 2 bullets max" if ai_role or P.get('projects') else ""}
-6. EDUCATION & CERTIFICATIONS: Degrees + SAFe 6.0 only. One line each.
-
-PAGE LIMIT RULES:
-- Total output must fit on 2 pages when formatted (approx 600-750 words max)
-- Cut ruthlessly — quality over quantity
-- No filler phrases like "responsible for" or "assisted with"
-- Every line must earn its place by matching JD language
-
-FORMAT: Plain text only. No markdown (no ** or # or ```). Use ALL CAPS for section headers. Use "- " for bullets.
-
-ATS CHECK — before outputting verify:
-- At least 12 exact JD keywords/phrases used?
-- All tools from JD present in Skills section?
-- Every bullet contains a JD keyword + metric?
-- Total word count under 750?"""
+CRITICAL RULES:
+- Plain text ONLY. No **, no #, no ```, no markdown
+- Section headers in ALL CAPS exactly as shown
+- Bullets use "- " prefix
+- Job titles on their own line, no slashes before or after
+- Target 700-850 words total (fills 2 pages properly)
+- Weave in at least 12 exact keyword phrases from the JD
+- Do NOT write "HEADER" anywhere — start with the candidate name"""
 
     result = call_claude(prompt, max_tokens=8192)
     return jsonify({"result": result, "isAiRole": ai_role})
@@ -1195,17 +1260,18 @@ def clear_all_jobs():
 
 
 def _create_docx_from_text(text, title="Document"):
-    """Create a .docx file from plain text using python-docx.
-    Matches Amretha Karthikeyan CV style:
-    - Times New Roman font throughout
-    - Name: large, centered, ALL CAPS
-    - Contact lines: bold, centered
-    - Section headers: ALL CAPS, bold, with bottom border
-    - Job titles: bold (no slashes around them)
-    - CORE SKILLS: categorised (Data Visualisation, Programming, etc.) — label bold, values normal
-    - Education/Certification body text: NOT bold
-    - Bullets trimmed to fit 2 pages (no content after last education entry)
-    Returns bytes.
+    """
+    Render AI-generated resume text into a formatted .docx matching Amretha CV style.
+    Rules:
+      - First non-empty line = candidate name (large, centered, bold)
+      - Lines 2-5 with contact info = centered, bold
+      - Section headers (ALL CAPS known keywords) = bold, bottom-border, no bullets
+      - Company + date lines = bold, no bullets
+      - Job titles (role keywords, no year) = bold, no bullets, no slashes
+      - Skill category lines "Label: values" = label bold, values normal
+      - Education body text = not bold
+      - Bullet lines starting with "- " = proper list bullets
+      - Everything else = normal body text
     """
     from docx import Document as DocxDocument
     from docx.shared import Pt, Inches
@@ -1214,234 +1280,201 @@ def _create_docx_from_text(text, title="Document"):
     from docx.oxml import OxmlElement
     import io, re
 
-    FONT = 'Times New Roman'
-    BODY_SIZE = Pt(11)
-    HEADER_SIZE = Pt(12)
-    NAME_SIZE = Pt(16)
+    FONT        = 'Times New Roman'
+    BODY_SIZE   = Pt(11)
+    HDR_SIZE    = Pt(12)
+    NAME_SIZE   = Pt(16)
 
     SECTION_HEADERS = {
-        'PROFESSIONAL SUMMARY', 'SUMMARY', 'CORE SKILLS', 'SKILL SET', 'SKILLS',
-        'PROFESSIONAL EXPERIENCE', 'EXPERIENCE', 'EDUCATION & CERTIFICATIONS',
-        'ACADEMIC QUALIFICATION', 'EDUCATION', 'CERTIFICATIONS', 'PROJECTS',
-        'AI & INNOVATION', 'KEY ACHIEVEMENTS', 'QUALIFICATIONS', 'CONTACT'
+        'PROFESSIONAL SUMMARY','SUMMARY','CORE SKILLS','SKILL SET','SKILLS',
+        'PROFESSIONAL EXPERIENCE','EXPERIENCE','EDUCATION & CERTIFICATIONS',
+        'ACADEMIC QUALIFICATION','EDUCATION','CERTIFICATIONS','PROJECTS',
+        'AI & INNOVATION','KEY ACHIEVEMENTS','QUALIFICATIONS','CONTACT',
+        'PRODUCT IMPACT','INTEREST AREAS',
     }
-
-    # These section headers mark where education content starts — body text here NOT bold
     EDUCATION_SECTIONS = {
-        'EDUCATION & CERTIFICATIONS', 'ACADEMIC QUALIFICATION',
-        'EDUCATION', 'CERTIFICATIONS'
+        'EDUCATION & CERTIFICATIONS','ACADEMIC QUALIFICATION','EDUCATION','CERTIFICATIONS'
     }
-
-    # Skill category labels as they appear in CV (label: bold, values: normal)
-    SKILL_CATEGORIES = [
-        'Data visualization tools', 'Data Visualization', 'Programming',
-        'Key Modules in Masters', 'Others', 'Certification', 'Certifications',
-        'Methodologies', 'Tools', 'Soft Skills', 'Domain', 'Languages',
-        'Analytics', 'Project Management',
+    SKILL_CATS = [
+        'Data visualization tools','Data Visualization','Programming',
+        'Key Modules in Masters','Others','Certification','Certifications',
+        'Methodologies','Tools','Soft Skills','Domain','Analytics',
+        'Project Management','Languages','AI & Automation',
+    ]
+    JOB_TITLE_KW = [
+        'analyst','manager','owner','lead','consultant','engineer','director',
+        'associate','intern','officer','specialist','coordinator','head',
+        'senior','junior','internship','product','digital',
     ]
 
-    def add_bottom_border(paragraph):
-        pPr = paragraph._p.get_or_add_pPr()
+    def add_border(p):
+        pPr = p._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
-        bottom = OxmlElement('w:bottom')
-        bottom.set(qn('w:val'), 'single')
-        bottom.set(qn('w:sz'), '6')
-        bottom.set(qn('w:space'), '1')
-        bottom.set(qn('w:color'), '000000')
-        pBdr.append(bottom)
+        bot  = OxmlElement('w:bottom')
+        bot.set(qn('w:val'),   'single')
+        bot.set(qn('w:sz'),    '6')
+        bot.set(qn('w:space'), '1')
+        bot.set(qn('w:color'), '000000')
+        pBdr.append(bot)
         pPr.append(pBdr)
 
-    def set_font(run, size=None, bold=False, italic=False):
+    def rf(run, size=None, bold=False):
         run.font.name = FONT
         run.font.size = size or BODY_SIZE
-        run.bold = bold
-        run.italic = italic
+        run.bold      = bold
 
-    def clean_job_title(s):
-        """Remove leading/trailing slashes and dashes used as separators."""
-        # Remove patterns like "/ Title /" or "--- Title ---"
-        s = re.sub(r'^[\s/\-|]+', '', s)
-        s = re.sub(r'[\s/\-|]+$', '', s)
-        return s.strip()
+    def plain_para(doc, text_str, bold=False, before=0, after=3):
+        p   = doc.add_paragraph()
+        run = p.add_run(text_str)
+        rf(run, bold=bold)
+        p.paragraph_format.space_before = Pt(before)
+        p.paragraph_format.space_after  = Pt(after)
+        return p
+
+    def clean_title(s):
+        return re.sub(r'^[\s/\-–|]+|[\s/\-–|]+$', '', s).strip()
 
     doc = DocxDocument()
-
-    style = doc.styles['Normal']
-    style.font.name = FONT
-    style.font.size = BODY_SIZE
-
-    for section in doc.sections:
-        section.top_margin = Inches(0.6)
-        section.bottom_margin = Inches(0.6)
-        section.left_margin = Inches(0.75)
-        section.right_margin = Inches(0.75)
-
+    doc.styles['Normal'].font.name = FONT
+    doc.styles['Normal'].font.size = BODY_SIZE
+    for sec in doc.sections:
+        sec.top_margin    = Inches(0.6)
+        sec.bottom_margin = Inches(0.6)
+        sec.left_margin   = Inches(0.75)
+        sec.right_margin  = Inches(0.75)
     try:
-        list_style = doc.styles['List Bullet']
-        list_style.font.name = FONT
-        list_style.font.size = BODY_SIZE
+        doc.styles['List Bullet'].font.name = FONT
+        doc.styles['List Bullet'].font.size = BODY_SIZE
     except Exception:
         pass
 
-    # ── PRE-PROCESS: truncate any content after last education entry ──────
-    # Find EDUCATION section and keep only up to end of that section
-    # (removes stray trailing paragraphs that push to page 3)
-    lines_raw = text.split('\n')
-    # Find the last occurrence of education section header
-    edu_section_idx = -1
-    for idx, ln in enumerate(lines_raw):
-        up = ln.strip().upper().rstrip(':')
-        if up in EDUCATION_SECTIONS:
-            edu_section_idx = idx
+    lines        = [l for l in text.split('\n')]
+    name_written = False
+    contact_done = False
+    in_exp       = False
+    in_edu       = False
+    in_skills    = False
+    line_num     = 0
 
-    # If education appears BEFORE experience, don't truncate after it
-    # Only truncate trailing blank lines at very end
-    cleaned_lines = lines_raw
-    # Strip trailing blank lines
-    while cleaned_lines and not cleaned_lines[-1].strip():
-        cleaned_lines = cleaned_lines[:-1]
-
-    lines = cleaned_lines
-    i = 0
-    first_line = True
-    in_experience = False
-    in_education = False
-    in_skills = False
-
-    while i < len(lines):
-        raw = lines[i]
+    for raw in lines:
         stripped = raw.strip()
-        i += 1
+        line_num += 1
 
+        # blank line → small spacer
         if not stripped:
-            if not first_line:
+            if name_written:
                 p = doc.add_paragraph()
-                p.paragraph_format.space_after = Pt(0)
+                p.paragraph_format.space_after  = Pt(0)
                 p.paragraph_format.space_before = Pt(0)
             continue
 
-        first_line = False
         upper = stripped.upper().rstrip(':')
 
-        # ── NAME (very first non-empty line) ─────────────────────────────
-        if len([p for p in doc.paragraphs if p.text.strip()]) == 0:
-            if re.match(r'^[A-Z][A-Za-z\s]+$', stripped) and len(stripped.split()) <= 5 and len(stripped) < 50:
-                p = doc.add_paragraph()
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p.add_run(stripped.upper())
-                set_font(run, size=NAME_SIZE, bold=True)
-                p.paragraph_format.space_after = Pt(3)
+        # ── CANDIDATE NAME (very first real line) ────────────────────────
+        if not name_written:
+            # Skip literal "HEADER" placeholder the AI sometimes outputs
+            if stripped.upper() in ('HEADER', '[HEADER]', '**HEADER**'):
                 continue
-
-        # ── SECTION HEADERS ──────────────────────────────────────────────
-        is_section = (upper in SECTION_HEADERS or
-                      (stripped.isupper() and len(stripped) > 3 and len(stripped) < 60
-                       and not stripped.startswith('-')))
-
-        if is_section:
-            in_experience = 'EXPERIENCE' in upper
-            in_education = upper in EDUCATION_SECTIONS
-            in_skills = 'SKILL' in upper or upper in ('CORE SKILLS', 'SKILLS')
-            p = doc.add_paragraph()
-            run = p.add_run(stripped.upper().rstrip(':') + ':')
-            set_font(run, size=HEADER_SIZE, bold=True)
-            add_bottom_border(p)
-            p.paragraph_format.space_before = Pt(8)
-            p.paragraph_format.space_after = Pt(4)
-            continue
-
-        # ── BULLET POINTS ────────────────────────────────────────────────
-        if stripped.startswith(('- ', '* ', '– ')):
-            content = stripped[2:].strip()
-            p = doc.add_paragraph(style='List Bullet')
-            run = p.add_run(content)
-            set_font(run)
-            p.paragraph_format.space_after = Pt(2)
-            continue
-
-        # ── SKILL CATEGORY LINES (label bold: value normal) ──────────────
-        # e.g. "Data visualization tools: Tableau, Power BI"
-        skill_cat_match = None
-        if in_skills or (not in_experience and not in_education):
-            for cat in SKILL_CATEGORIES:
-                if stripped.lower().startswith(cat.lower() + ':'):
-                    skill_cat_match = cat
-                    break
-
-        if skill_cat_match:
-            colon_pos = stripped.index(':')
-            label = stripped[:colon_pos + 1]   # "Data visualization tools:"
-            value = stripped[colon_pos + 1:]    # " Tableau, Power BI"
-            p = doc.add_paragraph()
-            run_label = p.add_run(label)
-            set_font(run_label, bold=True)
-            if value.strip():
-                run_val = p.add_run(value)
-                set_font(run_val, bold=False)
-            p.paragraph_format.space_after = Pt(2)
-            continue
-
-        # ── JOB TITLE (bold, slashes stripped) ───────────────────────────
-        is_job_title = (in_experience and
-                        not re.search(r'\d{4}', stripped) and
-                        not stripped.startswith('-') and
-                        len(stripped) < 100 and
-                        re.match(r'^[A-Z/\-]', stripped) and
-                        any(kw in stripped.lower() for kw in [
-                            'analyst', 'manager', 'owner', 'lead', 'consultant',
-                            'engineer', 'director', 'associate', 'intern', 'officer',
-                            'specialist', 'coordinator', 'head', 'senior', 'junior',
-                            'responsibilities', 'achievements', 'internship'
-                        ]))
-
-        # Company + date line
-        is_company_date = bool(re.search(
-            r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).{0,30}(\d{4}|Present)',
-            stripped, re.IGNORECASE))
-
-        if is_job_title:
-            cleaned = clean_job_title(stripped)
-            p = doc.add_paragraph()
-            run = p.add_run(cleaned)
-            set_font(run, bold=True)
-            p.paragraph_format.space_after = Pt(1)
-            p.paragraph_format.space_before = Pt(0)
-            continue
-
-        if is_company_date:
-            p = doc.add_paragraph()
-            run = p.add_run(stripped)
-            set_font(run, bold=True)
-            p.paragraph_format.space_after = Pt(1)
-            p.paragraph_format.space_before = Pt(5)
-            continue
-
-        # ── CONTACT/HEADLINE LINES (centered, bold) ──────────────────────
-        para_count = len([p for p in doc.paragraphs if p.text.strip()])
-        is_contact = (para_count < 6 and
-                      any(kw in stripped for kw in ['@', '+65', 'linkedin', 'Mobile', 'email', 'http', '|']))
-
-        if is_contact:
-            p = doc.add_paragraph()
+            name_written = True
+            p   = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(stripped)
-            set_font(run, bold=True)
-            p.paragraph_format.space_after = Pt(2)
-            continue
-
-        # ── EDUCATION BODY TEXT (not bold) ───────────────────────────────
-        if in_education:
-            p = doc.add_paragraph()
-            run = p.add_run(stripped)
-            set_font(run, bold=False)
+            run = p.add_run(stripped.upper())
+            rf(run, size=NAME_SIZE, bold=True)
             p.paragraph_format.space_after = Pt(3)
             continue
 
+        # ── CONTACT / HEADLINE (first 6 non-blank lines after name) ──────
+        if not contact_done:
+            non_blank = [p for p in doc.paragraphs if p.text.strip()]
+            if len(non_blank) <= 5:
+                is_contact_line = any(k in stripped for k in
+                    ['@','Mobile','+65','linkedin','http','|','#0','Road','Street','Avenue'])
+                is_headline     = '|' in stripped or stripped.endswith('Excellence') or stripped.endswith('Manager') or stripped.endswith('Owner')
+                if is_contact_line or is_headline:
+                    p   = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(stripped)
+                    rf(run, bold=True)
+                    p.paragraph_format.space_after = Pt(2)
+                    continue
+                else:
+                    contact_done = True
+            else:
+                contact_done = True
+
+        # ── SECTION HEADERS ──────────────────────────────────────────────
+        is_section = (upper in SECTION_HEADERS or
+                      (stripped.isupper() and 3 < len(stripped) < 60
+                       and not stripped.startswith('-')))
+        if is_section:
+            in_exp    = 'EXPERIENCE' in upper
+            in_edu    = upper in EDUCATION_SECTIONS
+            in_skills = 'SKILL' in upper or upper in ('CORE SKILLS',)
+            p   = doc.add_paragraph()
+            run = p.add_run(stripped.upper().rstrip(':') + ':')
+            rf(run, size=HDR_SIZE, bold=True)
+            add_border(p)
+            p.paragraph_format.space_before = Pt(8)
+            p.paragraph_format.space_after  = Pt(4)
+            continue
+
+        # ── BULLET POINTS ────────────────────────────────────────────────
+        if stripped.startswith(('- ','* ','– ','• ')):
+            content = stripped[2:].strip()
+            p   = doc.add_paragraph(style='List Bullet')
+            run = p.add_run(content)
+            rf(run)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        # ── SKILL CATEGORY LINES  e.g. "Data visualization tools: Tableau, Power BI"
+        skill_match = None
+        for cat in SKILL_CATS:
+            if stripped.lower().startswith(cat.lower() + ':'):
+                skill_match = cat; break
+        if skill_match:
+            colon = stripped.index(':')
+            p   = doc.add_paragraph()
+            r1  = p.add_run(stripped[:colon+1])
+            rf(r1, bold=True)
+            r2  = p.add_run(stripped[colon+1:])
+            rf(r2, bold=False)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        # ── COMPANY + DATE LINE ──────────────────────────────────────────
+        is_co_date = bool(re.search(
+            r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).{0,40}(\d{4}|Present)',
+            stripped, re.I))
+
+        # ── JOB TITLE LINE (bold plain, no bullet) ───────────────────────
+        # Must be in experience block, no year, starts with capital or slash,
+        # contains a recognisable role keyword, NOT a bullet
+        is_job_title = (
+            in_exp and
+            not is_co_date and
+            not stripped.startswith('-') and
+            len(stripped) < 100 and
+            re.match(r'^[A-Z/\-–]', stripped) and
+            any(kw in stripped.lower() for kw in JOB_TITLE_KW) and
+            not stripped.upper().rstrip(':') in SECTION_HEADERS
+        )
+
+        if is_co_date:
+            plain_para(doc, stripped, bold=True, before=5, after=1)
+            continue
+
+        if is_job_title:
+            plain_para(doc, clean_title(stripped), bold=True, before=0, after=1)
+            continue
+
+        # ── EDUCATION BODY TEXT (not bold) ───────────────────────────────
+        if in_edu:
+            plain_para(doc, stripped, bold=False, before=0, after=3)
+            continue
+
         # ── DEFAULT BODY TEXT ─────────────────────────────────────────────
-        p = doc.add_paragraph()
-        run = p.add_run(stripped)
-        set_font(run)
-        p.paragraph_format.space_after = Pt(3)
+        plain_para(doc, stripped, bold=False, before=0, after=3)
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -1479,31 +1512,109 @@ def generate_docs():
         edu_text_d = '; '.join([f"{e.get('degree','')} — {e.get('school','')} ({e.get('period','')})" for e in P.get('education', [])])
 
         # Generate resume text via AI
-        resume_prompt = f"""Write a COMPLETE, DETAILED ATS-optimised resume (at least 750 words). Plain text only, no markdown.
-{framing}
+        resume_prompt = f"""You are an expert ATS resume writer. Write a COMPLETE 2-page resume for {P.get('name','')} targeting: {role_type or role} at {company}.
 
-TARGET: {role_type or role} at {company}
-JOB DESCRIPTION: {jd[:3000]}
-{"AI ROLE: Feature AI projects with URL: " + P.get('aiProjectUrl','') if ai_role else ""}
+JOB DESCRIPTION:
+{jd[:3000]}
+{"AI ROLE: Feature this AI project: " + P.get('aiProjectUrl','') if ai_role else ""}
 
-CANDIDATE: {P.get('name','')}, {P.get('mobile','')}, {P.get('email','')}, {P.get('linkedin','')}
-Address: {P.get('address','')}
-Summary: {P.get('summary','')}
-Certification: {P.get('certification','')}
-Skills: {skills_text_d}
+===== CANDIDATE MASTER DATA =====
+Name: {P.get('name','')} | Phone: {P.get('mobile','')} | Email: {P.get('email','')}
+LinkedIn: {P.get('linkedin','')} | Address: {P.get('address','')}
+Certification: SAFe 6.0 Product Owner/Product Management
 
-EXPERIENCE:
-{exp_text_d}
-EDUCATION: {edu_text_d}
+HEADLINE OPTIONS (pick most JD-relevant):
+- Business Analyst Lead | Product Owner | Sales & Operations Excellence
+- Lead Business Analyst / Enterprise Product Owner
+- Digital Product Manager | Product Owner (AI & Data Platforms)
+- Business Analyst Lead | Product Owner | Product Manager
 
-INSTRUCTIONS (2-PAGE MAX, ATS-OPTIMISED):
-STEP 1: Extract exact keywords from the JD above — tools, methodologies, role terms, soft skills phrased exactly as written.
-- HEADER: name, phone, email, LinkedIn (4 lines max)
-- PROFESSIONAL SUMMARY: 4 sentences, max 80 words. Mirror 6+ exact JD keywords.
-- CORE SKILLS: Candidate skills + JD keywords, comma-separated, max 24 items, 3 columns
-- PROFESSIONAL EXPERIENCE: Primary role max 5 bullets, each other role max 3 bullets. Every bullet = action verb + JD keyword + metric. No filler.
-- EDUCATION & CERTIFICATIONS: Degrees + SAFe 6.0, one line each
-Use ALL CAPS section headers. "- " for bullets. No markdown. Target 600-750 words max (2 pages)."""
+SUMMARY OPTIONS (blend most relevant):
+Option A: Lead Business Analyst with 5+ years supporting senior leadership through business planning, financial operations, and cross-functional project execution. Proven ability to streamline processes, manage executive stakeholder communications, track KPIs, drive operational alignment and cost profitability.
+Option B: Lead Business Analyst / Enterprise Product Owner with 5+ years delivering large-scale enterprise platforms across financial services. Proven expertise in owning product roadmaps, translating business needs into scalable technical solutions, and driving platform adoption.
+Option C: Digital Product Manager / Product Owner with 5+ years delivering large-scale digital platforms across financial services. Proven expertise in owning product roadmaps, managing Agile delivery, translating user needs into scalable solutions, and driving data-informed product decisions.
+
+SKILLS POOL:
+Data visualization tools: Tableau, Power BI
+Programming: PSQL, Python basics
+Key Modules in Masters: Financial Planning and Analysis, Operations management
+Others: Agile, SAFe 6.0, JIRA, Excel, Microsoft Project, Product Vision and road mapping, Business Analysis, Risk Mitigation & Change Management, Budget Forecasting & Variance Analysis, KPI Tracking & Dashboard Reporting, API integrations, Stakeholder Management, AI-enabled Product Integration, SEO, GEO, CRO, MVP Definition, Generative AI, LLM, Prompt Engineering
+Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
+
+EXPERIENCE BULLETS POOL — pick 6-8 for KPMG, 3-4 for JPM, 2-3 for Amazon:
+KPMG (Feb 2021–Present):
+- Defined and drove product vision, roadmap, and delivery strategy for large-scale digital transformation initiatives for financial institutions
+- Owned and prioritised product backlog ensuring alignment with business objectives, regulatory requirements and customer experience goals
+- Collaborated with cross-regional stakeholders (UX, architecture, finance) to drive alignment across engineering and operations functions
+- Drove product scope decisions through impact analysis generating ~5% additional business value
+- Led sprint ceremonies (Planning, Reviews, Retros, PI Planning) across multi-squad programme, resulting in 30% increase in team velocity
+- Managed 3rd party vendors, conducted go-live planning, led data migrations from legacy systems ensuring 99.9% uptime
+- Designed and executed end-to-end test scenarios on Loan IQ applications resulting in 25% reduction in defects
+- Supported automation and AI-enabled solution design including API integrations, reducing manual effort by 30 man-days
+- Built business cases and executive presentations for new product features securing stakeholder approval
+- Drove data-informed product decisions by defining KPIs, analysing performance metrics and identifying improvement opportunities
+- Supported executive decision-making through As-Is/To-Be analysis and streamlined documentation of strategic processes
+- Trained vendors, managed go-live execution plans, ensuring process continuity across business units
+Key Achievements:
+- Impact Analysis persuaded clients to approve change requests, generating ~5% additional project profit
+- Automated Interest computation solutioning saved 30 man-days of manual work
+- Led team through critical sprint-to-SIT transition, maintaining project delivery timeline
+
+J.P. Morgan (Oct 2023–Jan 2024, Asset Management Internship):
+- Gathered product requirements from trading/execution teams to build robust investor profiles
+- Performed quantitative analysis of 5 stocks, recommended to 2 clients based on risk metrics, achieving 10% portfolio value increase
+- Measured portfolio performance via KPIs: Annual Portfolio Return, Variance, Standard Deviation
+- Helped clients onboard and build stronger investment portfolios with market-leading solutions
+
+Amazon (Mar 2018–Mar 2019, Business Analyst):
+- Built real-time quality monitoring dashboards using Power BI from SQL Server and Excel, reducing quality issues by 20%
+- Translated business requirements into functional/non-functional specifications with 95% stakeholder satisfaction
+- Analysed and visualised operational data using Tableau and Power BI, increasing operational efficiency 15%
+
+EDUCATION:
+Master of Science Engineering Business Management, Coventry University, UK (Jul 2019–Nov 2020)
+Bachelor of Engineering Electronics & Communication Engineering, Anna University, India (Jul 2012–Jun 2016)
+=================================
+
+OUTPUT FORMAT — FOLLOW EXACTLY, plain text only, no markdown:
+Line 1: Amretha Karthikeyan
+Line 2: #02-321 153 Gangsa Road, Singapore-670153
+Line 3: Mobile: +65-90256503, email: amretha.ammu@gmail.com
+Line 4: https://www.linkedin.com/in/amretha-nishanth-534b39101/
+Line 5: [chosen headline]
+[blank line]
+PROFESSIONAL SUMMARY:
+[4 sentences blended from options, weaving in JD keywords]
+[blank line]
+SKILL SET:
+Data visualization tools: [tools]
+Programming: [languages]
+Others: [all relevant skills + JD keywords]
+Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
+[blank line]
+PROFESSIONAL EXPERIENCE:
+KPMG, Singapore  Feb 2021 – Present
+[Job title — no slashes before or after]
+- [6-8 selected bullets]
+Key Achievements:
+- [3 achievements]
+[blank line]
+J.P. Morgan  Oct 2023 – Jan 2024
+Asset Management Virtual Internship
+- [3-4 bullets]
+[blank line]
+Amazon Inc, India  Mar 2018 – Mar 2019
+Business Analyst
+- [2-3 bullets]
+[blank line]
+ACADEMIC QUALIFICATION:
+Master of Science Engineering Business Management  Jul 2019 – Nov 2020
+Coventry University, UK
+Bachelor of Engineering  Jul 2012 – Jun 2016
+Electronics & Communication Engineering, Anna University, India
+Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
+
+RULES: Plain text only. ALL CAPS section headers. "- " bullets. Job titles on own line with NO slashes. Do NOT write "HEADER". Target 750-850 words. Weave in 12+ exact JD keyword phrases."""
 
         resume_text = call_claude(resume_prompt, max_tokens=8192)
 
@@ -2833,14 +2944,42 @@ def bulk_apply():
                 _time2.sleep(2)
 
             # Generate resume via AI
-            resume_prompt = f"""Write a 2-page max ATS-optimised resume for {P['name']} targeting: {role} at {company}.
-{framing}
+            resume_prompt = f"""Write a complete 2-page ATS resume for {P['name']} targeting: {role} at {company}.
 JOB DESCRIPTION: {jd[:2000]}
-{"AI ROLE: Feature AI projects." if ai_role else ""}
-STEP 1: Extract exact keywords, tools, methodologies from the JD above and use them throughout.
-FORMAT: Plain text, ALL CAPS section headers, "- " bullets, no markdown.
-SECTIONS: HEADER (4 lines) | PROFESSIONAL SUMMARY (4 sentences, 80 words, mirror JD keywords) | CORE SKILLS (max 24, include all JD tools) | PROFESSIONAL EXPERIENCE (primary role 5 bullets, others 3 bullets, every bullet = action verb + JD keyword + metric) | EDUCATION & CERTIFICATIONS.
-TARGET: 600-750 words max (2 pages). Cut filler, every line must match JD language."""
+{"AI ROLE: Feature AI project: " + P.get('aiProjectUrl','') if ai_role else ""}
+
+Use this master data — select bullets most relevant to the JD:
+Contact: {P.get('mobile','')} | {P.get('email','')} | {P.get('linkedin','')}
+Address: {P.get('address','')}
+
+KPMG Singapore Feb 2021–Present bullets pool (pick 6-8):
+- Defined and drove product vision, roadmap and delivery strategy for large-scale digital transformation for financial institutions
+- Owned and prioritised product backlog ensuring alignment with business objectives, regulatory requirements and customer experience goals
+- Drove product scope decisions through impact analysis generating ~5% additional business value
+- Led sprint ceremonies (Planning, Reviews, Retros, PI Planning) across multi-squad programme, 30% velocity increase
+- Managed 3rd party vendors, go-live planning, data migrations from legacy systems, 99.9% uptime
+- Designed end-to-end test scenarios on Loan IQ applications, 25% defect reduction
+- Supported automation and AI-enabled solution design including API integrations, saving 30 man-days
+- Built business cases and executive presentations for new features securing stakeholder approval
+- Collaborated with UX, architecture and engineering teams to deliver scalable digital platforms
+- Drove data-informed product decisions by defining KPIs and analysing performance metrics
+Key Achievements: ~5% project profit from impact analysis | 30 man-days saved via automation | Maintained delivery timeline through critical sprint-to-SIT phase
+
+J.P. Morgan Oct 2023–Jan 2024 (pick 3): Requirements gathering from trading teams | Quantitative analysis of 5 stocks, 10% portfolio value increase | KPI measurement: Annual Return, Variance, Standard Deviation
+
+Amazon India Mar 2018–Mar 2019 (pick 2-3): Power BI dashboards from SQL Server, 20% quality improvement | Functional/non-functional specs with 95% stakeholder satisfaction | Tableau/Power BI data visualisation, 15% efficiency increase
+
+Skills: Agile, SAFe 6.0, JIRA, Tableau, Power BI, PSQL, Python, API integrations, Stakeholder Management, Product Vision, Roadmapping, Business Analysis, Risk Mitigation, Change Management, Budget Forecasting, KPI Tracking, AI-enabled Product Integration, SEO, GEO, CRO, Generative AI, LLM
+Education: MSc Engineering Business Management, Coventry University UK (2019-2020) | BEng Electronics, Anna University India (2012-2016) | SAFe 6.0 Certified
+
+FORMAT (plain text, no markdown):
+Line 1: Amretha Karthikeyan
+Line 2: #02-321 153 Gangsa Road, Singapore-670153
+Line 3: Mobile: +65-90256503, email: amretha.ammu@gmail.com
+Line 4: https://www.linkedin.com/in/amretha-nishanth-534b39101/
+Line 5: [most relevant headline]
+Then: PROFESSIONAL SUMMARY (4 sentences, JD keywords) | SKILL SET (Data visualization tools: ... / Programming: ... / Others: ... / Certification: ...) | PROFESSIONAL EXPERIENCE (company+date bold line, job title on next line, bullets) | ACADEMIC QUALIFICATION
+ALL CAPS section headers. "- " bullets. No slashes on job titles. Target 750-850 words. Do NOT write HEADER."""
             resume_text = call_claude(resume_prompt)
             api_call_count += 1
 
