@@ -535,7 +535,7 @@ def tailor_resume():
 JOB DESCRIPTION:
 {jd}
 
-{"AI ROLE: Feature this AI project prominently: " + P.get('aiProjectUrl','') if ai_role else ""}
+{"" if not ai_role else "AI & PERSONAL PROJECTS (include between EXPERIENCE and EDUCATION, keep under 150 words):\nAI Trade Analysis Platform | Python, Flask, Claude API, Render | 2025\n- Designed and deployed a live AI trade analysis app (https://stock-monitor-8ak6.onrender.com) using generative AI and financial data for real-time insights\n- End-to-end AI product: problem definition, prompt engineering, LLM integration, Flask backend, cloud deployment\nJob Hunt Automation App | Python, Flask, Supabase, Claude API | 2025\n- Built and deployed an AI-powered job-hunt automation app (https://job-hunt-app-r7my.onrender.com) generating tailored resumes, cover letters and AI job scoring\n- Independently shipped full-stack AI product demonstrating hands-on product ownership beyond consulting"}
 
 ===== CANDIDATE MASTER DATA (use ALL of this) =====
 Name: {P.get('name','')}
@@ -663,7 +663,9 @@ CRITICAL RULES:
 - Job titles on their own line, no slashes before or after
 - Target 700-850 words total (fills 2 pages properly)
 - Weave in at least 12 exact keyword phrases from the JD
-- Do NOT write "HEADER" anywhere — start with the candidate name"""
+- Do NOT write "HEADER" anywhere — start with the candidate name
+- Do NOT mention the target company name (e.g. Revolut, any specific company) anywhere in the resume — language must be generic and transferable
+- Do NOT add any closing paragraphs, cover-letter-style text, or "overall I believe..." summaries after the ACADEMIC QUALIFICATION section"""
 
     result = call_claude(prompt, max_tokens=8192)
     return jsonify({"result": result, "isAiRole": ai_role})
@@ -1349,6 +1351,19 @@ def _create_docx_from_text(text, title="Document"):
         pass
 
     lines        = [l for l in text.split('\n')]
+
+    # ── HARD TRUNCATE after education section ─────────────────────────────
+    # Find last "Certification:" line (marks end of education) and cut after it.
+    # This removes any cover-letter-style paragraphs the AI appends.
+    STOP_AFTER = ['certification:', 'anna university', 'coventry university']
+    last_edu_line = 0
+    for idx, ln in enumerate(lines):
+        lo = ln.strip().lower()
+        if any(lo.startswith(s) for s in STOP_AFTER):
+            last_edu_line = idx
+    if last_edu_line > 0:
+        lines = lines[:last_edu_line + 1]
+
     name_written = False
     contact_done = False
     in_exp       = False
@@ -1516,7 +1531,7 @@ def generate_docs():
 
 JOB DESCRIPTION:
 {jd[:3000]}
-{"AI ROLE: Feature this AI project: " + P.get('aiProjectUrl','') if ai_role else ""}
+{"" if not ai_role else "AI & PERSONAL PROJECTS (between EXPERIENCE and EDUCATION, max 150 words):\nAI Trade Analysis Platform | Python, Flask, Claude API | 2025\n- Live AI trade analysis app (https://stock-monitor-8ak6.onrender.com) combining financial data with generative AI\n- Demonstrated: prompt engineering, LLM integration, Flask, Render deployment\nJob Hunt Automation App | Python, Flask, Supabase, Claude API | 2025\n- AI-powered job-hunt app (https://job-hunt-app-r7my.onrender.com) with tailored resume/cover letter generation and AI scoring\n- Full-stack AI product shipped independently"}
 
 ===== CANDIDATE MASTER DATA =====
 Name: {P.get('name','')} | Phone: {P.get('mobile','')} | Email: {P.get('email','')}
@@ -1614,7 +1629,7 @@ Bachelor of Engineering  Jul 2012 – Jun 2016
 Electronics & Communication Engineering, Anna University, India
 Certification: Scaled Agile Framework 6.0 Product Owner/Product Management
 
-RULES: Plain text only. ALL CAPS section headers. "- " bullets. Job titles on own line with NO slashes. Do NOT write "HEADER". Target 750-850 words. Weave in 12+ exact JD keyword phrases."""
+RULES: Plain text only. ALL CAPS section headers. "- " bullets. Job titles on own line with NO slashes. Do NOT write "HEADER". Target 750-850 words. Weave in 12+ exact JD keyword phrases. Do NOT mention the target company name anywhere in the resume. Do NOT add closing paragraphs or cover-letter-style text after the education section."""
 
         resume_text = call_claude(resume_prompt, max_tokens=8192)
 
@@ -2946,7 +2961,7 @@ def bulk_apply():
             # Generate resume via AI
             resume_prompt = f"""Write a complete 2-page ATS resume for {P['name']} targeting: {role} at {company}.
 JOB DESCRIPTION: {jd[:2000]}
-{"AI ROLE: Feature AI project: " + P.get('aiProjectUrl','') if ai_role else ""}
+{"" if not ai_role else "AI PROJECTS (max 150 words): AI Trade Analysis App (https://stock-monitor-8ak6.onrender.com) — generative AI + financial data, Flask, Render. Job Hunt App (https://job-hunt-app-r7my.onrender.com) — AI resume/cover letter generation, Supabase, full-stack."}
 
 Use this master data — select bullets most relevant to the JD:
 Contact: {P.get('mobile','')} | {P.get('email','')} | {P.get('linkedin','')}
@@ -2979,7 +2994,7 @@ Line 3: Mobile: +65-90256503, email: amretha.ammu@gmail.com
 Line 4: https://www.linkedin.com/in/amretha-nishanth-534b39101/
 Line 5: [most relevant headline]
 Then: PROFESSIONAL SUMMARY (4 sentences, JD keywords) | SKILL SET (Data visualization tools: ... / Programming: ... / Others: ... / Certification: ...) | PROFESSIONAL EXPERIENCE (company+date bold line, job title on next line, bullets) | ACADEMIC QUALIFICATION
-ALL CAPS section headers. "- " bullets. No slashes on job titles. Target 750-850 words. Do NOT write HEADER."""
+ALL CAPS section headers. "- " bullets. No slashes on job titles. Target 750-850 words. Do NOT write HEADER. Do NOT mention the target company name anywhere in the resume."""
             resume_text = call_claude(resume_prompt)
             api_call_count += 1
 
