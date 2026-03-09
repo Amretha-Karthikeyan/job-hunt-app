@@ -1199,14 +1199,16 @@ def _create_docx_from_text(text, title="Document"):
     Matches Amretha Karthikeyan CV style:
     - Times New Roman font throughout
     - Name: large, centered, ALL CAPS
-    - Contact: bold, centered
-    - Section headers: ALL CAPS, bold, underlined
-    - Job titles: bold
-    - Bullets: indented list
+    - Contact lines: bold, centered
+    - Section headers: ALL CAPS, bold, with bottom border
+    - Job titles: bold (no slashes around them)
+    - CORE SKILLS: categorised (Data Visualisation, Programming, etc.) — label bold, values normal
+    - Education/Certification body text: NOT bold
+    - Bullets trimmed to fit 2 pages (no content after last education entry)
     Returns bytes.
     """
     from docx import Document as DocxDocument
-    from docx.shared import Pt, Inches, RGBColor
+    from docx.shared import Pt, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
@@ -1224,8 +1226,21 @@ def _create_docx_from_text(text, title="Document"):
         'AI & INNOVATION', 'KEY ACHIEVEMENTS', 'QUALIFICATIONS', 'CONTACT'
     }
 
+    # These section headers mark where education content starts — body text here NOT bold
+    EDUCATION_SECTIONS = {
+        'EDUCATION & CERTIFICATIONS', 'ACADEMIC QUALIFICATION',
+        'EDUCATION', 'CERTIFICATIONS'
+    }
+
+    # Skill category labels as they appear in CV (label: bold, values: normal)
+    SKILL_CATEGORIES = [
+        'Data visualization tools', 'Data Visualization', 'Programming',
+        'Key Modules in Masters', 'Others', 'Certification', 'Certifications',
+        'Methodologies', 'Tools', 'Soft Skills', 'Domain', 'Languages',
+        'Analytics', 'Project Management',
+    ]
+
     def add_bottom_border(paragraph):
-        """Add bottom border line under a paragraph (section divider)."""
         pPr = paragraph._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
         bottom = OxmlElement('w:bottom')
@@ -1242,21 +1257,25 @@ def _create_docx_from_text(text, title="Document"):
         run.bold = bold
         run.italic = italic
 
+    def clean_job_title(s):
+        """Remove leading/trailing slashes and dashes used as separators."""
+        # Remove patterns like "/ Title /" or "--- Title ---"
+        s = re.sub(r'^[\s/\-|]+', '', s)
+        s = re.sub(r'[\s/\-|]+$', '', s)
+        return s.strip()
+
     doc = DocxDocument()
 
-    # Default style
     style = doc.styles['Normal']
     style.font.name = FONT
     style.font.size = BODY_SIZE
 
-    # Narrow margins
     for section in doc.sections:
         section.top_margin = Inches(0.6)
         section.bottom_margin = Inches(0.6)
         section.left_margin = Inches(0.75)
         section.right_margin = Inches(0.75)
 
-    # Configure bullet list style
     try:
         list_style = doc.styles['List Bullet']
         list_style.font.name = FONT
@@ -1264,10 +1283,30 @@ def _create_docx_from_text(text, title="Document"):
     except Exception:
         pass
 
-    lines = text.split('\n')
+    # ── PRE-PROCESS: truncate any content after last education entry ──────
+    # Find EDUCATION section and keep only up to end of that section
+    # (removes stray trailing paragraphs that push to page 3)
+    lines_raw = text.split('\n')
+    # Find the last occurrence of education section header
+    edu_section_idx = -1
+    for idx, ln in enumerate(lines_raw):
+        up = ln.strip().upper().rstrip(':')
+        if up in EDUCATION_SECTIONS:
+            edu_section_idx = idx
+
+    # If education appears BEFORE experience, don't truncate after it
+    # Only truncate trailing blank lines at very end
+    cleaned_lines = lines_raw
+    # Strip trailing blank lines
+    while cleaned_lines and not cleaned_lines[-1].strip():
+        cleaned_lines = cleaned_lines[:-1]
+
+    lines = cleaned_lines
     i = 0
     first_line = True
     in_experience = False
+    in_education = False
+    in_skills = False
 
     while i < len(lines):
         raw = lines[i]
@@ -1278,28 +1317,31 @@ def _create_docx_from_text(text, title="Document"):
             if not first_line:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_after = Pt(0)
+                p.paragraph_format.space_before = Pt(0)
             continue
 
         first_line = False
         upper = stripped.upper().rstrip(':')
 
-        # ── NAME (very first non-empty line) ──────────────────────────────
-        if len(doc.paragraphs) <= 1 and not stripped.startswith('-') and not stripped.isupper() is False:
-            # Check if this looks like a name (short, no punctuation except spaces)
-            if re.match(r'^[A-Z][A-Za-z\s]+$', stripped) and len(stripped.split()) <= 4 and len(stripped) < 40:
+        # ── NAME (very first non-empty line) ─────────────────────────────
+        if len([p for p in doc.paragraphs if p.text.strip()]) == 0:
+            if re.match(r'^[A-Z][A-Za-z\s]+$', stripped) and len(stripped.split()) <= 5 and len(stripped) < 50:
                 p = doc.add_paragraph()
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 run = p.add_run(stripped.upper())
                 set_font(run, size=NAME_SIZE, bold=True)
-                p.paragraph_format.space_after = Pt(2)
+                p.paragraph_format.space_after = Pt(3)
                 continue
 
-        # ── SECTION HEADERS ───────────────────────────────────────────────
+        # ── SECTION HEADERS ──────────────────────────────────────────────
         is_section = (upper in SECTION_HEADERS or
-                      (stripped.isupper() and len(stripped) > 3 and len(stripped) < 60 and not stripped.startswith('-')))
+                      (stripped.isupper() and len(stripped) > 3 and len(stripped) < 60
+                       and not stripped.startswith('-')))
 
         if is_section:
             in_experience = 'EXPERIENCE' in upper
+            in_education = upper in EDUCATION_SECTIONS
+            in_skills = 'SKILL' in upper or upper in ('CORE SKILLS', 'SKILLS')
             p = doc.add_paragraph()
             run = p.add_run(stripped.upper().rstrip(':') + ':')
             set_font(run, size=HEADER_SIZE, bold=True)
@@ -1308,47 +1350,76 @@ def _create_docx_from_text(text, title="Document"):
             p.paragraph_format.space_after = Pt(4)
             continue
 
-        # ── BULLET POINTS ─────────────────────────────────────────────────
-        if stripped.startswith(('- ', '• ', '* ', '– ')):
+        # ── BULLET POINTS ────────────────────────────────────────────────
+        if stripped.startswith(('- ', '* ', '– ')):
             content = stripped[2:].strip()
             p = doc.add_paragraph(style='List Bullet')
             run = p.add_run(content)
             set_font(run)
             p.paragraph_format.space_after = Pt(2)
-            p.paragraph_format.left_indent = Inches(0.25)
             continue
 
-        # ── JOB TITLE LINE (bold) ─────────────────────────────────────────
-        # Detect: contains company name pattern OR is short line after company/date line
-        # Job titles: lines that come right after company+date lines in EXPERIENCE section
+        # ── SKILL CATEGORY LINES (label bold: value normal) ──────────────
+        # e.g. "Data visualization tools: Tableau, Power BI"
+        skill_cat_match = None
+        if in_skills or (not in_experience and not in_education):
+            for cat in SKILL_CATEGORIES:
+                if stripped.lower().startswith(cat.lower() + ':'):
+                    skill_cat_match = cat
+                    break
+
+        if skill_cat_match:
+            colon_pos = stripped.index(':')
+            label = stripped[:colon_pos + 1]   # "Data visualization tools:"
+            value = stripped[colon_pos + 1:]    # " Tableau, Power BI"
+            p = doc.add_paragraph()
+            run_label = p.add_run(label)
+            set_font(run_label, bold=True)
+            if value.strip():
+                run_val = p.add_run(value)
+                set_font(run_val, bold=False)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        # ── JOB TITLE (bold, slashes stripped) ───────────────────────────
         is_job_title = (in_experience and
                         not re.search(r'\d{4}', stripped) and
                         not stripped.startswith('-') and
-                        len(stripped) < 80 and
-                        re.match(r'^[A-Z]', stripped) and
+                        len(stripped) < 100 and
+                        re.match(r'^[A-Z/\-]', stripped) and
                         any(kw in stripped.lower() for kw in [
                             'analyst', 'manager', 'owner', 'lead', 'consultant',
                             'engineer', 'director', 'associate', 'intern', 'officer',
                             'specialist', 'coordinator', 'head', 'senior', 'junior',
-                            'responsibilities', 'achievements'
+                            'responsibilities', 'achievements', 'internship'
                         ]))
 
-        # Company + date line (bold, with date range)
-        is_company_date = bool(re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).*(\d{4}|Present)', stripped, re.IGNORECASE))
+        # Company + date line
+        is_company_date = bool(re.search(
+            r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).{0,30}(\d{4}|Present)',
+            stripped, re.IGNORECASE))
 
-        if is_company_date or is_job_title:
+        if is_job_title:
+            cleaned = clean_job_title(stripped)
+            p = doc.add_paragraph()
+            run = p.add_run(cleaned)
+            set_font(run, bold=True)
+            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.space_before = Pt(0)
+            continue
+
+        if is_company_date:
             p = doc.add_paragraph()
             run = p.add_run(stripped)
             set_font(run, bold=True)
-            p.paragraph_format.space_after = Pt(2)
-            p.paragraph_format.space_before = Pt(4) if is_company_date else Pt(0)
+            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.space_before = Pt(5)
             continue
 
-        # ── CONTACT/HEADLINE LINES (centered, bold) ───────────────────────
-        # Lines near top with email, phone, LinkedIn
-        para_count = len(doc.paragraphs)
+        # ── CONTACT/HEADLINE LINES (centered, bold) ──────────────────────
+        para_count = len([p for p in doc.paragraphs if p.text.strip()])
         is_contact = (para_count < 6 and
-                      any(kw in stripped for kw in ['@', '+65', 'linkedin', 'Mobile', 'email', '|']))
+                      any(kw in stripped for kw in ['@', '+65', 'linkedin', 'Mobile', 'email', 'http', '|']))
 
         if is_contact:
             p = doc.add_paragraph()
@@ -1356,6 +1427,14 @@ def _create_docx_from_text(text, title="Document"):
             run = p.add_run(stripped)
             set_font(run, bold=True)
             p.paragraph_format.space_after = Pt(2)
+            continue
+
+        # ── EDUCATION BODY TEXT (not bold) ───────────────────────────────
+        if in_education:
+            p = doc.add_paragraph()
+            run = p.add_run(stripped)
+            set_font(run, bold=False)
+            p.paragraph_format.space_after = Pt(3)
             continue
 
         # ── DEFAULT BODY TEXT ─────────────────────────────────────────────
