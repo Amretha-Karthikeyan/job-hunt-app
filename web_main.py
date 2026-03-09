@@ -1195,59 +1195,174 @@ def clear_all_jobs():
 
 
 def _create_docx_from_text(text, title="Document"):
-    """Create a .docx file from plain text using python-docx. Returns bytes."""
+    """Create a .docx file from plain text using python-docx.
+    Matches Amretha Karthikeyan CV style:
+    - Times New Roman font throughout
+    - Name: large, centered, ALL CAPS
+    - Contact: bold, centered
+    - Section headers: ALL CAPS, bold, underlined
+    - Job titles: bold
+    - Bullets: indented list
+    Returns bytes.
+    """
     from docx import Document as DocxDocument
-    from docx.shared import Pt, Inches
+    from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    import io
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io, re
+
+    FONT = 'Times New Roman'
+    BODY_SIZE = Pt(11)
+    HEADER_SIZE = Pt(12)
+    NAME_SIZE = Pt(16)
+
+    SECTION_HEADERS = {
+        'PROFESSIONAL SUMMARY', 'SUMMARY', 'CORE SKILLS', 'SKILL SET', 'SKILLS',
+        'PROFESSIONAL EXPERIENCE', 'EXPERIENCE', 'EDUCATION & CERTIFICATIONS',
+        'ACADEMIC QUALIFICATION', 'EDUCATION', 'CERTIFICATIONS', 'PROJECTS',
+        'AI & INNOVATION', 'KEY ACHIEVEMENTS', 'QUALIFICATIONS', 'CONTACT'
+    }
+
+    def add_bottom_border(paragraph):
+        """Add bottom border line under a paragraph (section divider)."""
+        pPr = paragraph._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), '6')
+        bottom.set(qn('w:space'), '1')
+        bottom.set(qn('w:color'), '000000')
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+    def set_font(run, size=None, bold=False, italic=False):
+        run.font.name = FONT
+        run.font.size = size or BODY_SIZE
+        run.bold = bold
+        run.italic = italic
 
     doc = DocxDocument()
 
-    # Set default font
+    # Default style
     style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Calibri'
-    font.size = Pt(11)
+    style.font.name = FONT
+    style.font.size = BODY_SIZE
 
-    # Set narrow margins
+    # Narrow margins
     for section in doc.sections:
-        section.top_margin = Inches(0.5)
-        section.bottom_margin = Inches(0.5)
-        section.left_margin = Inches(0.7)
-        section.right_margin = Inches(0.7)
+        section.top_margin = Inches(0.6)
+        section.bottom_margin = Inches(0.6)
+        section.left_margin = Inches(0.75)
+        section.right_margin = Inches(0.75)
 
-    # Parse the text into paragraphs
+    # Configure bullet list style
+    try:
+        list_style = doc.styles['List Bullet']
+        list_style.font.name = FONT
+        list_style.font.size = BODY_SIZE
+    except Exception:
+        pass
+
     lines = text.split('\n')
-    for line in lines:
-        stripped = line.strip()
+    i = 0
+    first_line = True
+    in_experience = False
+
+    while i < len(lines):
+        raw = lines[i]
+        stripped = raw.strip()
+        i += 1
+
         if not stripped:
-            doc.add_paragraph('')
+            if not first_line:
+                p = doc.add_paragraph()
+                p.paragraph_format.space_after = Pt(0)
             continue
 
-        # Detect headers (lines in ALL CAPS, or starting with #, or common section headers)
-        is_header = (stripped.startswith('#') or
-                     stripped.isupper() and len(stripped) > 3 or
-                     stripped.rstrip(':').upper() in [
-                         'PROFESSIONAL SUMMARY', 'CORE SKILLS', 'PROFESSIONAL EXPERIENCE',
-                         'EDUCATION & CERTIFICATIONS', 'EDUCATION', 'CERTIFICATIONS',
-                         'SKILLS', 'EXPERIENCE', 'PROJECTS', 'AI & INNOVATION',
-                         'CONTACT', 'SUMMARY', 'KEY ACHIEVEMENTS', 'QUALIFICATIONS'])
+        first_line = False
+        upper = stripped.upper().rstrip(':')
 
-        if is_header:
-            clean = stripped.lstrip('#').strip()
+        # ── NAME (very first non-empty line) ──────────────────────────────
+        if len(doc.paragraphs) <= 1 and not stripped.startswith('-') and not stripped.isupper() is False:
+            # Check if this looks like a name (short, no punctuation except spaces)
+            if re.match(r'^[A-Z][A-Za-z\s]+$', stripped) and len(stripped.split()) <= 4 and len(stripped) < 40:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p.add_run(stripped.upper())
+                set_font(run, size=NAME_SIZE, bold=True)
+                p.paragraph_format.space_after = Pt(2)
+                continue
+
+        # ── SECTION HEADERS ───────────────────────────────────────────────
+        is_section = (upper in SECTION_HEADERS or
+                      (stripped.isupper() and len(stripped) > 3 and len(stripped) < 60 and not stripped.startswith('-')))
+
+        if is_section:
+            in_experience = 'EXPERIENCE' in upper
             p = doc.add_paragraph()
-            run = p.add_run(clean.upper())
-            run.bold = True
-            run.font.size = Pt(12)
-            run.font.name = 'Calibri'
-            p.space_after = Pt(4)
-        elif stripped.startswith(('- ', '• ', '* ', '– ')):
-            # Bullet point
-            p = doc.add_paragraph(stripped[2:].strip(), style='List Bullet')
-            p.paragraph_format.space_after = Pt(2)
-        else:
-            p = doc.add_paragraph(stripped)
+            run = p.add_run(stripped.upper().rstrip(':') + ':')
+            set_font(run, size=HEADER_SIZE, bold=True)
+            add_bottom_border(p)
+            p.paragraph_format.space_before = Pt(8)
             p.paragraph_format.space_after = Pt(4)
+            continue
+
+        # ── BULLET POINTS ─────────────────────────────────────────────────
+        if stripped.startswith(('- ', '• ', '* ', '– ')):
+            content = stripped[2:].strip()
+            p = doc.add_paragraph(style='List Bullet')
+            run = p.add_run(content)
+            set_font(run)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Inches(0.25)
+            continue
+
+        # ── JOB TITLE LINE (bold) ─────────────────────────────────────────
+        # Detect: contains company name pattern OR is short line after company/date line
+        # Job titles: lines that come right after company+date lines in EXPERIENCE section
+        is_job_title = (in_experience and
+                        not re.search(r'\d{4}', stripped) and
+                        not stripped.startswith('-') and
+                        len(stripped) < 80 and
+                        re.match(r'^[A-Z]', stripped) and
+                        any(kw in stripped.lower() for kw in [
+                            'analyst', 'manager', 'owner', 'lead', 'consultant',
+                            'engineer', 'director', 'associate', 'intern', 'officer',
+                            'specialist', 'coordinator', 'head', 'senior', 'junior',
+                            'responsibilities', 'achievements'
+                        ]))
+
+        # Company + date line (bold, with date range)
+        is_company_date = bool(re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4}).*(\d{4}|Present)', stripped, re.IGNORECASE))
+
+        if is_company_date or is_job_title:
+            p = doc.add_paragraph()
+            run = p.add_run(stripped)
+            set_font(run, bold=True)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_before = Pt(4) if is_company_date else Pt(0)
+            continue
+
+        # ── CONTACT/HEADLINE LINES (centered, bold) ───────────────────────
+        # Lines near top with email, phone, LinkedIn
+        para_count = len(doc.paragraphs)
+        is_contact = (para_count < 6 and
+                      any(kw in stripped for kw in ['@', '+65', 'linkedin', 'Mobile', 'email', '|']))
+
+        if is_contact:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(stripped)
+            set_font(run, bold=True)
+            p.paragraph_format.space_after = Pt(2)
+            continue
+
+        # ── DEFAULT BODY TEXT ─────────────────────────────────────────────
+        p = doc.add_paragraph()
+        run = p.add_run(stripped)
+        set_font(run)
+        p.paragraph_format.space_after = Pt(3)
 
     buf = io.BytesIO()
     doc.save(buf)
