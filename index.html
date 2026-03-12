@@ -2377,11 +2377,17 @@ async function loadJobsFromSupabase() {
  realLocal.forEach(j => { localMap[String(j.id)] = j; });
  // Merge Supabase jobs with any local-only fields
  const sbIdSet = new Set();
+ const STATUS_RANK = { saved: 0, wishlist: 0, applied: 1, interviewing: 2, offer: 3, rejected: 4 };
  const merged = sbJobs.map(sj => {
  sbIdSet.add(String(sj.id));
  const lj = localMap[String(sj.id)] || {};
+ // Always keep the most advanced status — never downgrade applied/rejected back to saved
+ const sbRank = STATUS_RANK[sj.status] ?? 0;
+ const lRank  = STATUS_RANK[lj.status] ?? 0;
+ const bestStatus = lRank >= sbRank ? (lj.status || sj.status || 'saved') : (sj.status || 'saved');
  return {
  ...sj,
+ status: bestStatus,
  jd: sj.jd || lj.jd || '',
  aiScore: sj.aiScore != null ? sj.aiScore : lj.aiScore,
  aiLabel: sj.aiLabel || lj.aiLabel || '',
@@ -2392,6 +2398,7 @@ async function loadJobsFromSupabase() {
  resume_variant: sj.resume_variant || lj.resume_variant || '',
  resume_filename: sj.resume_filename || lj.resume_filename || '',
  cover_filename: sj.cover_filename || lj.cover_filename || '',
+ matchedKeywords: sj.matchedKeywords || lj.matchedKeywords || [],
  };
  });
  // IMPORTANT: Also keep local-only jobs (not yet in Supabase)

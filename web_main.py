@@ -752,6 +752,7 @@ def cover_letter():
     if P.get('aiProjectUrl'):
         achievements_text += f"- Personal Project: {P.get('aiProjectUrl','')}\n"
 
+    proj_url = P.get('aiProjectUrl', 'https://stock-monitor-8ak6.onrender.com')
     prompt = f"""Write a professional 300-350 word cover letter for {P['name']} applying to {role_type} at {company}.
 {framing}
 
@@ -761,23 +762,18 @@ KEY ACHIEVEMENTS:
 JOB DESCRIPTION:
 {jd}
 
-{"IMPORTANT — AI ROLE: Mention the project at " + P.get('aiProjectUrl','') + " as proof of hands-on AI product development. Include the URL." if ai_role else ""}
+{"IMPORTANT — AI ROLE: Mention the live project at " + proj_url + " as proof of hands-on AI product development. Write the full URL exactly — never write [URL] or any placeholder." if ai_role else ""}
 
-ATS & RECRUITER OPTIMISATION:
-1. Mirror the EXACT job title and 5-8 key phrases from the JD in the letter.
-2. Use confident product language, not consulting jargon.
-3. Include specific metrics (5% value, 30 man-days) for credibility.
-4. Reference the company name and role title at least twice.
-5. Keep paragraphs short (3-4 sentences max) for easy scanning.
+Rules: Plain text only. No bold, no headers, no bullet points. Start with 'Dear Hiring Manager,' on its own line.
 
 Write a compelling cover letter that:
-1. Opens with a confident hook referencing the specific role and company, positioning as a product builder not a service provider
+1. Opens with a confident hook referencing the specific role and company
 2. Highlights KPMG metrics (5% value, 30 man-days) in context of what JD requires
-3. {"Mentions live AI project with URL as key differentiator" if ai_role else "Bridges consulting delivery to product ownership with specific JD alignment"}
-4. Shows genuine, specific enthusiasm for {company} — reference what they do
-5. Ends with a clear, action-oriented call to action
+3. {"Mentions live AI project with full URL " + proj_url + " as key differentiator" if ai_role else "Bridges consulting delivery to product ownership with specific JD alignment"}
+4. Shows genuine enthusiasm for {company} — reference what they do
+5. Ends with a clear call to action
 
-Exactly 300-350 words. No consulting jargon. Sound like a product person. Weave JD keywords naturally throughout."""
+Exactly 300-350 words. No consulting jargon. Never use [URL], [Company], or any placeholder text — always use the actual values."""
 
     result = call_claude(prompt)
     return jsonify({"result": result})
@@ -1451,8 +1447,15 @@ def _create_docx_from_text(text, title="Document"):
 
         upper = stripped.upper().rstrip(':')
 
+        # ── COVER LETTER DETECTION ───────────────────────────────────────
+        # If first real line is "Dear...", this is a cover letter — skip name/contact header
+        if not name_written and stripped.lower().startswith('dear'):
+            name_written = True  # suppress name block
+            contact_done = True  # suppress contact/headline block
+            # fall through to render as normal left-aligned body text
+
         # ── CANDIDATE NAME (very first real line) ────────────────────────
-        if not name_written:
+        elif not name_written:
             # Skip literal "HEADER" placeholder the AI sometimes outputs
             if stripped.upper() in ('HEADER', '[HEADER]', '**HEADER**'):
                 continue
@@ -1470,7 +1473,22 @@ def _create_docx_from_text(text, title="Document"):
             if len(non_blank) <= 5:
                 is_contact_line = any(k in stripped for k in
                     ['@','Mobile','+65','linkedin','http','|','#0','Road','Street','Avenue'])
-                is_headline     = '|' in stripped or stripped.endswith('Excellence') or stripped.endswith('Manager') or stripped.endswith('Owner')
+                is_headline     = ('|' in stripped or stripped.endswith('Excellence') or stripped.endswith('Owner')) and not stripped.lower().startswith('dear')
+                if is_contact_line or is_headline:
+                    p   = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(stripped)
+                    rf(run, bold=True)
+                    p.paragraph_format.space_after = Pt(2)
+                    continue
+                else:
+                    contact_done = True
+            else:
+                contact_done = True
+            if len(non_blank) <= 5:
+                is_contact_line = any(k in stripped for k in
+                    ['@','Mobile','+65','linkedin','http','|','#0','Road','Street','Avenue'])
+                is_headline     = ('|' in stripped or stripped.endswith('Excellence') or stripped.endswith('Manager') or stripped.endswith('Owner')) and not stripped.lower().startswith('dear')
                 if is_contact_line or is_headline:
                     p   = doc.add_paragraph()
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1486,7 +1504,8 @@ def _create_docx_from_text(text, title="Document"):
         # ── SECTION HEADERS ──────────────────────────────────────────────
         is_section = (upper in SECTION_HEADERS or
                       (stripped.isupper() and 3 < len(stripped) < 60
-                       and not stripped.startswith('-')))
+                       and not stripped.startswith('-')
+                       and not stripped.upper().startswith('DEAR')))
         if is_section:
             in_exp    = 'EXPERIENCE' in upper
             in_edu    = upper in EDUCATION_SECTIONS
@@ -1709,15 +1728,16 @@ RULES: Plain text only. ALL CAPS section headers. "- " bullets. Job titles on ow
         resume_text = _inject_ai_projects(resume_text)
 
         # Generate cover letter text via AI
+        proj_url = P.get('aiProjectUrl', 'https://stock-monitor-8ak6.onrender.com')
         cover_prompt = f"""Write a professional 300-350 word cover letter for {P['name']} applying to {role_type or role} at {company}.
 {framing}
 
 JOB DESCRIPTION:
 {jd[:3000]}
 
-{"AI ROLE: Mention AI project experience with URL." if ai_role else ""}
+{"AI ROLE: Mention the live AI project at " + proj_url + " as proof of hands-on AI product development. Write the full URL exactly as given — never write [URL] or placeholder text." if ai_role else ""}
 
-Write in plain text. Be specific about the company and role. Include metrics from candidate experience: ~5% business value, 30 man-days eliminated. Reference SAFe certification."""
+Rules: Plain text only. No bold, no headers, no bullet points. Start with 'Dear Hiring Manager,' on its own line. Be specific about the company and role. Include metrics: ~5% business value, 30 man-days eliminated. Reference SAFe certification. Never use placeholder text like [URL] or [Company] — always use the actual values."""
 
         cover_text = call_claude(cover_prompt)
 
@@ -3264,7 +3284,7 @@ ALL CAPS section headers. "- " bullets. No slashes on job titles. Target 750-850
             cover_prompt = f"""Write a 300-word cover letter for {P['name']} applying to {role} at {company}.
 {framing}
 JOB DESCRIPTION: {jd[:1500]}
-Plain text, specific to company, include metrics."""
+Rules: Plain text only. No bold, no headers. Start with 'Dear Hiring Manager,' on its own line. Be specific to company and role. Include metrics (~5% business value, 30 man-days saved). Never use [URL] or placeholder text — use actual values."""
             cover_text = call_claude(cover_prompt)
             api_call_count += 1
 
