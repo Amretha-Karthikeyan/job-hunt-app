@@ -1817,7 +1817,7 @@ async function openRankModal() {
  </div>
  <div style="text-align:right;">
  <div style="font-size:13px;font-weight:600;">${r.label}</div>
- <div style="font-size:22px;font-weight:800;color:var(--blue);">${r.score}<span style="font-size:13px;font-weight:400;color:var(--gray-400);">/10</span></div>
+ <div style="font-size:22px;font-weight:800;color:var(--blue);">${Number(r.score).toFixed(1)}<span style="font-size:13px;font-weight:400;color:var(--gray-400);">/10</span></div>
  </div>
  </div>
  <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">${r.reason}</div>
@@ -2648,7 +2648,7 @@ function renderRow(j) {
  const reasonTip = j.aiReason ? j.aiReason.replace(/"/g,"'") : '';
  const scoreText = hasScore
  ? `<div title="${reasonTip}" style="cursor:help;">
- <span style="background:${scoreBg};border:1.5px solid ${scoreBorder};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${scoreEmoji} ${j.aiScore}/10</span>
+ <span style="background:${scoreBg};border:1.5px solid ${scoreBorder};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${scoreEmoji} ${Number(j.aiScore).toFixed(1)}/10</span>
  ${j.aiPriority ? `<div style="font-size:10px;color:var(--gray-400);margin-top:2px;">${j.aiPriority}</div>` : ''}
  </div>`
  : `<span style="color:var(--gray-300);font-size:11px;">${j.jd ? ' Run Rank' : 'No JD yet'}</span>`;
@@ -2785,7 +2785,7 @@ function openJobDetail(id) {
  const badgeColors = { High:"rgba(239,68,68,0.15);color:#f87171", Medium:"rgba(245,158,11,0.15);color:#fbbf24", Low:"rgba(34,197,94,0.1);color:#4ade80" };
  const bc = badgeColors[j.priority] || "var(--bg-secondary);color:var(--text-secondary)";
  const aiScoreBadge = j.aiScore != null
- ? `<span style="background:rgba(245,158,11,0.15);color:#fbbf24;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.aiScore >= 8 ? '' : j.aiScore >= 6 ? '' : j.aiScore >= 4 ? '' : ''} ${j.aiScore}/10 fit</span>`
+ ? `<span style="background:rgba(245,158,11,0.15);color:#fbbf24;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;">${j.aiScore >= 8 ? '' : j.aiScore >= 6 ? '' : j.aiScore >= 4 ? '' : ''} ${Number(j.aiScore).toFixed(1)}/10 fit</span>`
  : '';
  document.getElementById("jdModalBadges").innerHTML = `
  ${aiScoreBadge}
@@ -3538,7 +3538,7 @@ async function bulkAutoApply() {
  <input type="checkbox" class="bulk-check" data-id="${j.id}" checked>
  <div style="flex:1;min-width:0;">
  <div style="font-weight:600;font-size:12px;">${j.company || 'Unknown'}</div>
- <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${j.role || ''} ${j.aiScore ? ' '+j.aiScore+'/10' : ''}</div>
+ <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${j.role || ''} ${j.aiScore ? ' '+Number(j.aiScore).toFixed(1)+'/10' : ''}</div>
  </div>
  <span style="font-size:10px;color:var(--gray-400);">${(j.url||'').includes('linkedin') ? 'LinkedIn' : (j.url||'').includes('workable') ? 'Workable' : (j.url||'').includes('mycareersfuture') ? 'MCF' : 'Web'}</span>
  </label>
