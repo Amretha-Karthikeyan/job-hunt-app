@@ -530,7 +530,8 @@ def index():
         return f"<h2>App is running!</h2><p>Template error: {e}</p><p>BASE_DIR: {BASE_DIR}</p>", 500
 
 def _inject_ai_projects(resume_text):
-    """Always inject exactly ONE AI & Personal Projects section before ACADEMIC QUALIFICATION.
+    """Always inject exactly ONE AI & Personal Projects section right after PROFESSIONAL SUMMARY.
+    This highlights AI specialisation early — before Skills and Experience.
     Strips any AI-generated version first, then inserts our fixed canonical block."""
     import re as _re
 
@@ -547,27 +548,35 @@ def _inject_ai_projects(resume_text):
     )
 
     # Strip ALL existing AI projects blocks (AI-generated or previously injected)
-    resume_text = _re.sub(
-        r'\n+AI & PERSONAL PROJECTS:.*?(?=\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
-        '', resume_text, flags=_re.DOTALL | _re.IGNORECASE
-    )
-    resume_text = _re.sub(
-        r'\n+PERSONAL PROJECTS:.*?(?=\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
-        '', resume_text, flags=_re.DOTALL | _re.IGNORECASE
-    )
-    resume_text = _re.sub(
-        r'\n+AI PROJECTS:.*?(?=\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
-        '', resume_text, flags=_re.DOTALL | _re.IGNORECASE
-    )
+    for pattern in [
+        r'\n+AI & PERSONAL PROJECTS:.*?(?=\nSKILL SET|\nCORE SKILLS|\nSKILLS|\nPROFESSIONAL EXPERIENCE|\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
+        r'\n+PERSONAL PROJECTS:.*?(?=\nSKILL SET|\nCORE SKILLS|\nSKILLS|\nPROFESSIONAL EXPERIENCE|\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
+        r'\n+AI PROJECTS:.*?(?=\nSKILL SET|\nCORE SKILLS|\nSKILLS|\nPROFESSIONAL EXPERIENCE|\nACADEMIC QUALIFICATION|\nEDUCATION|\Z)',
+    ]:
+        resume_text = _re.sub(pattern, '', resume_text, flags=_re.DOTALL | _re.IGNORECASE)
 
-    # Insert before ACADEMIC QUALIFICATION or EDUCATION section
+    # Insert RIGHT AFTER the PROFESSIONAL SUMMARY block (before SKILL SET / CORE SKILLS)
+    # Find end of summary block = the line before SKILL SET or CORE SKILLS
+    for next_section in ['SKILL SET:', 'SKILL SET', 'CORE SKILLS:', 'CORE SKILLS', 'SKILLS:']:
+        idx = resume_text.find(next_section)
+        if idx != -1:
+            resume_text = resume_text[:idx].rstrip() + PROJECTS + '\n\n' + resume_text[idx:]
+            return resume_text
+
+    # Fallback: insert before PROFESSIONAL EXPERIENCE
+    for next_section in ['PROFESSIONAL EXPERIENCE:', 'PROFESSIONAL EXPERIENCE']:
+        idx = resume_text.find(next_section)
+        if idx != -1:
+            resume_text = resume_text[:idx].rstrip() + PROJECTS + '\n\n' + resume_text[idx:]
+            return resume_text
+
+    # Last fallback: before education
     for marker in ['ACADEMIC QUALIFICATION:', 'ACADEMIC QUALIFICATION', 'EDUCATION & CERTIFICATIONS:', 'EDUCATION:']:
         idx = resume_text.find(marker)
         if idx != -1:
             resume_text = resume_text[:idx].rstrip() + PROJECTS + '\n\n' + resume_text[idx:]
             return resume_text
 
-    # Fallback: append at end
     return resume_text.rstrip() + PROJECTS
 
 
@@ -700,7 +709,7 @@ OUTPUT FORMAT RULES — FOLLOW EXACTLY:
 5. Line 5: [Most relevant headline from options above]
 6. Blank line
 7. PROFESSIONAL SUMMARY:
-8. [4 sentences, blend from options above, weave in JD keywords]
+8. [4 sentences — sentence 1: years of experience + role type + JD keyword; sentence 2: highlight hands-on AI product development — mention building live AI-powered applications (stock monitoring platform at https://stock-monitor-8ak6.onrender.com and job-hunt automation app at https://job-hunt-app-r7my.onrender.com) as key differentiator; sentence 3: consulting delivery expertise + 2 metrics; sentence 4: SAFe certification + target positioning + JD keyword]
 9. Blank line
 10. SKILL SET:
 11. Data visualization tools: Tableau, Power BI[+ JD tools]
@@ -1714,7 +1723,7 @@ Line 4: https://www.linkedin.com/in/amretha-nishanth-534b39101/
 Line 5: [chosen headline]
 [blank line]
 PROFESSIONAL SUMMARY:
-[4 sentences blended from options, weaving in JD keywords]
+[4 sentences — sentence 1: years of experience + role type + JD keyword; sentence 2: highlight hands-on AI product development — mention building live AI-powered applications (stock monitoring platform at https://stock-monitor-8ak6.onrender.com and job-hunt automation app at https://job-hunt-app-r7my.onrender.com) as key differentiator; sentence 3: consulting delivery expertise with metrics (~5% profit impact, 30 man-days saved); sentence 4: SAFe certification + target positioning + JD keyword]
 [blank line]
 SKILL SET:
 Data visualization tools: [tools]
@@ -4386,6 +4395,8 @@ def linkedin_scrape_saved_jobs_via_cookie(max_days=30):
                 job_urn = jp.get("entityUrn") or jp_ref or ""
                 m = re.search(r"(\d{8,})", job_urn)
                 job_id = m.group(1) if m else ""
+                if not job_id:
+                    continue  # no numeric job ID → not a real job posting, skip
                 job_url = f"https://www.linkedin.com/jobs/view/{job_id}/" if job_id else ""
 
                 # JD text
@@ -4413,6 +4424,11 @@ def linkedin_scrape_saved_jobs_via_cookie(max_days=30):
                 title = jp.get("title", "")
                 if not title:
                     continue
+
+                # Skip profile/sidebar entities — real job postings always have a numeric job ID
+                m_check = re.search(r"(\d{8,})", urn)
+                if not m_check:
+                    continue  # no job ID in URN → not a real job posting
 
                 # Check listedAt / repostedAt for 30-day filter
                 listed = jp.get("listedAt") or jp.get("repostedAt") or 0

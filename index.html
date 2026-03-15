@@ -676,7 +676,17 @@ function copyBookmarklet() {
  p.push('  var datePosted=lines[3]||"";');
  p.push('  var jidx=href.indexOf("/jobs/view/")+11;');
  p.push('  var jid=href.substring(jidx).replace(/\\/.*$/,"");');
- p.push('  if(t.length>1)jobs.push({role:t,company:c,url:href,linkedInId:jid?"li_"+jid:"",source:"LinkedIn",status:"saved",jd:"",datePosted:datePosted,companyLogo:logo});');
+ p.push('  var cardText=(card.innerText||"").toLowerCase();');
+ p.push('  var isNoise=');
+ p.push('    cardText.indexOf("build the career")>-1||');
+ p.push('    cardText.indexOf("reactivate")>-1||');
+ p.push('    cardText.indexOf("premium")>-1||');
+ p.push('    cardText.indexOf("profile viewers")>-1||');
+ p.push('    cardText.indexOf("followers")>-1||');
+ p.push('    cardText.indexOf("start a post")>-1||');
+ p.push('    t.toLowerCase().indexOf("lead business analyst @ kpmg")>-1||');
+ p.push('    t.length>120;');
+ p.push('  if(t.length>1&&!isNoise)jobs.push({role:t,company:c,url:href,linkedInId:jid?"li_"+jid:"",source:"LinkedIn",status:"saved",jd:"",datePosted:datePosted,companyLogo:logo});');
  p.push('}');
  p.push('}');
 
@@ -959,7 +969,6 @@ function copyBookmarklet() {
  </div>
  <div class="flex-row">
  <button class="btn btn-primary btn-sm" onclick="openAddJobModal()">+ Add New Job</button>
- <button id="extractJobsBtn" class="btn btn-sm" style="background:#7c3aed;color:white;border:none;" onclick="extractLatestJobs()">Extract Saved Jobs</button>
  <button class="btn btn-sm" style="background:#faf5ff;color:var(--accent-purple-light);border:1.5px solid #ddd6fe;" onclick="openRankModal()">AI Rank</button>
  <button class="btn btn-sm" style="background:rgba(34,197,94,0.12);color:#4ade80;border:1.5px solid rgba(34,197,94,0.3);" onclick="bulkAutoApply()">Bulk Auto-Apply</button>
  <button class="btn btn-ghost btn-sm" onclick="exportCSV()">CSV</button>
@@ -1359,8 +1368,7 @@ function copyBookmarklet() {
  <input id="cfgLinkedInCookie" type="password" placeholder="paste li_at cookie here (optional backup)"
  style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:monospace;">
  <div style="margin-top:6px;font-size:10px;color:#6b7280;line-height:1.5;">
- <strong>Primary method:</strong> Click &ldquo;Extract Saved Jobs&rdquo; &rarr; LinkedIn opens &rarr; click bookmarklet &rarr; done.<br>
- <strong>Backup:</strong> Paste li_at cookie from F12 &rarr; Application &rarr; Cookies &rarr; linkedin.com &rarr; <code>li_at</code>
+ <strong>How to use:</strong> Click <strong>Copy Bookmarklet</strong> above, save as a bookmark, then click it on any LinkedIn job page or saved-jobs page to import instantly.
  </div>
  </div>
  </div>
