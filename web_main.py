@@ -30,7 +30,8 @@ app = Flask(__name__,
             static_folder=os.path.join(BASE_DIR, 'static'))
 CORS(app)
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "")
+FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY", "")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
@@ -2206,10 +2207,14 @@ def rank_jobs():
 
 @app.route("/api/fetch-jd", methods=["POST"])
 def fetch_jd():
-    """Fetch job description from a LinkedIn or Indeed URL via HTTP scraping.
-    For LinkedIn URLs, tries Voyager API with stored li_at cookie first."""
+    """Fetch job description from any URL.
+    Priority: 1) Firecrawl (best, handles JS/auth walls)
+              2) LinkedIn Voyager API (if li_at cookie set)
+              3) BeautifulSoup HTML scraping (last resort)
+    """
     import requests as req
     import uuid as _uuid
+    import re as _re
     from bs4 import BeautifulSoup
 
     data = request.json
@@ -2217,53 +2222,103 @@ def fetch_jd():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    jd = ""
+    title = ""
+    company = ""
+
+    # ── METHOD 1: Firecrawl ──────────────────────────────────────────────────
+    if FIRECRAWL_API_KEY:
+        try:
+            print(f"[fetch-jd] Trying Firecrawl for {url}")
+            fc_resp = http_requests.post(
+                "https://api.firecrawl.dev/v1/scrape",
+                headers={
+                    "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "url": url,
+                    "formats": ["markdown"],
+                    "onlyMainContent": True,
+                    "waitFor": 2000,
+                },
+                timeout=30
+            )
+            if fc_resp.status_code == 200:
+                fc_data = fc_resp.json()
+                if fc_data.get("success"):
+                    content = (fc_data.get("data") or {}).get("markdown", "") or ""
+                    metadata = (fc_data.get("data") or {}).get("metadata", {}) or {}
+                    raw_title = metadata.get("title", "") or ""
+                    # LinkedIn title format: "Job Title at Company | LinkedIn"
+                    if " at " in raw_title:
+                        parts = raw_title.split(" at ", 1)
+                        title = parts[0].strip()
+                        company = parts[1].split("|")[0].strip()
+                    elif " | " in raw_title:
+                        title = raw_title.split(" | ")[0].strip()
+                    else:
+                        title = raw_title.strip()
+                    # Strip UI noise lines
+                    skip = ["sign in","join now","linkedin","cookie","privacy",
+                            "dismiss","agree","terms of service","reactivate",
+                            "followers","connections","save job","report this job",
+                            "similar jobs","show more","show less"]
+                    clean_lines = []
+                    for ln in content.split("\n"):
+                        ll = ln.strip().lower()
+                        if ll and any(s in ll for s in skip) and len(ll) < 60:
+                            continue
+                        clean_lines.append(ln)
+                    jd = "\n".join(clean_lines).strip()[:6000]
+                    if len(jd) > 200:
+                        print(f"[fetch-jd] Firecrawl OK: {len(jd)} chars")
+                        return jsonify({"jd": jd, "title": title, "company": company, "source": "firecrawl"})
+                    print(f"[fetch-jd] Firecrawl too short ({len(jd)}), trying fallback")
+            else:
+                print(f"[fetch-jd] Firecrawl HTTP {fc_resp.status_code}: {fc_resp.text[:200]}")
+        except Exception as fe:
+            print(f"[fetch-jd] Firecrawl error: {fe}")
+    else:
+        print("[fetch-jd] No FIRECRAWL_API_KEY — skipping")
+
+    # ── METHOD 2: LinkedIn Voyager API ───────────────────────────────────────
+    if "linkedin.com" in url:
+        m = _re.search(r"/jobs/view/(\d+)", url)
+        if m:
+            job_id = m.group(1)
+            li_at = _get_li_at_cookie()
+            if li_at:
+                li_at = li_at.strip().strip('"').strip("'")
+                csrf_token = f"ajax:{_uuid.uuid4()}"
+                v_headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/vnd.linkedin.normalized+json+2.1",
+                    "x-restli-protocol-version": "2.0.0",
+                    "csrf-token": csrf_token,
+                }
+                v_cookies = {"li_at": li_at, "JSESSIONID": f'"{csrf_token}"'}
+                v_url = (f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
+                         f"?decorationId=com.linkedin.voyager.deco.jobs.web.shared.WebFullJobPosting-65")
+                try:
+                    vr = http_requests.get(v_url, headers=v_headers, cookies=v_cookies, timeout=15)
+                    if vr.status_code == 200:
+                        vd = vr.json()
+                        desc = vd.get("description") or vd.get("descriptionText") or {}
+                        jd = (desc.get("text", "") if isinstance(desc, dict) else desc)[:5000]
+                        title = title or vd.get("title", "")
+                        comp_detail = vd.get("companyDetails") or {}
+                        if isinstance(comp_detail, dict):
+                            comp_res = comp_detail.get("com.linkedin.voyager.deco.jobs.web.shared.WebJobPostingCompany") or comp_detail
+                            company = company or comp_res.get("companyResolutionResult", {}).get("name") or ""
+                        if jd:
+                            print(f"[fetch-jd] Voyager OK: {len(jd)} chars")
+                            return jsonify({"jd": jd, "title": title, "company": company, "source": "voyager"})
+                except Exception as ve:
+                    print(f"[fetch-jd] Voyager error: {ve}")
+
+    # ── METHOD 3: BeautifulSoup fallback ────────────────────────────────────
     try:
-        jd = ""
-        title = ""
-        company = ""
-
-        # ── LinkedIn: try Voyager API with stored cookie first ──
-        if "linkedin.com" in url:
-            m = __import__("re").search(r"/jobs/view/(\d+)", url)
-            if m:
-                job_id = m.group(1)
-                li_at = _get_li_at_cookie()
-                if li_at:
-                    li_at = li_at.strip().strip('"').strip("'")
-                    csrf_token = f"ajax:{_uuid.uuid4()}"
-                    v_headers = {
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                                      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept": "application/vnd.linkedin.normalized+json+2.1",
-                        "x-restli-protocol-version": "2.0.0",
-                        "csrf-token": csrf_token,
-                    }
-                    v_cookies = {"li_at": li_at, "JSESSIONID": f'"{csrf_token}"'}
-                    v_url = (
-                        f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
-                        f"?decorationId=com.linkedin.voyager.deco.jobs.web.shared.WebFullJobPosting-65"
-                    )
-                    try:
-                        vr = http_requests.get(v_url, headers=v_headers, cookies=v_cookies, timeout=15)
-                        if vr.status_code == 200:
-                            vd = vr.json()
-                            desc = vd.get("description") or vd.get("descriptionText") or {}
-                            if isinstance(desc, dict):
-                                jd = desc.get("text", "")[:5000]
-                            elif isinstance(desc, str):
-                                jd = desc[:5000]
-                            # Also get title/company from Voyager response
-                            title = vd.get("title") or ""
-                            comp_detail = vd.get("companyDetails") or {}
-                            if isinstance(comp_detail, dict):
-                                comp_res = comp_detail.get("com.linkedin.voyager.deco.jobs.web.shared.WebJobPostingCompany") or comp_detail
-                                company = comp_res.get("companyResolutionResult", {}).get("name") or comp_res.get("company", {}).get("name") or ""
-                            if jd:
-                                return jsonify({"jd": jd, "title": title, "company": company})
-                    except Exception as ve:
-                        print(f"[fetch-jd] Voyager API failed for {job_id}: {ve}")
-
-        # ── Fallback: public HTML scraping ──
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml",
@@ -2272,56 +2327,39 @@ def fetch_jd():
         resp = req.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        if "linkedin.com" in url:
-            # LinkedIn job description selectors
-            for sel in [
-                ".description__text",
-                ".show-more-less-html__markup",
-                "[class*='description']",
-                "section.description",
-            ]:
+        selectors = {
+            "linkedin.com": [".description__text", ".show-more-less-html__markup", "[class*='description']", "section.description"],
+            "indeed.com":   ["#jobDescriptionText", ".jobsearch-jobDescriptionText", "[class*='description']"],
+            "mycareersfuture.gov.sg": ["[class*='job-description']", "[class*='description']", "article"],
+        }
+        matched_sels = next((v for k, v in selectors.items() if k in url), None)
+        if matched_sels:
+            for sel in matched_sels:
                 el = soup.select_one(sel)
                 if el and len(el.get_text(strip=True)) > 100:
                     jd = el.get_text(separator="\n", strip=True)[:5000]
                     break
-
-            title_el = soup.select_one("h1.top-card-layout__title, h1[class*='title']")
-            if title_el:
-                title = title_el.get_text(strip=True)
-
-            company_el = soup.select_one("a.topcard__org-name-link, [class*='company-name']")
-            if company_el:
-                company = company_el.get_text(strip=True)
-
-        elif "indeed.com" in url:
-            for sel in ["#jobDescriptionText", ".jobsearch-jobDescriptionText", "[class*='description']"]:
-                el = soup.select_one(sel)
-                if el and len(el.get_text(strip=True)) > 100:
-                    jd = el.get_text(separator="\n", strip=True)[:5000]
-                    break
-
-        elif "mycareersfuture.gov.sg" in url:
-            for sel in ["[class*='job-description']", "[class*='description']", "article"]:
-                el = soup.select_one(sel)
-                if el and len(el.get_text(strip=True)) > 100:
-                    jd = el.get_text(separator="\n", strip=True)[:5000]
-                    break
+            if "linkedin.com" in url:
+                t_el = soup.select_one("h1.top-card-layout__title, h1[class*='title']")
+                if t_el: title = title or t_el.get_text(strip=True)
+                c_el = soup.select_one("a.topcard__org-name-link, [class*='company-name']")
+                if c_el: company = company or c_el.get_text(strip=True)
         else:
-            # Generic fallback
             for tag in soup.find_all(["article", "section", "div"], limit=20):
                 text = tag.get_text(strip=True)
-                if len(text) > 500 and any(kw in text.lower() for kw in ["responsibilities", "requirements", "qualifications", "experience"]):
+                if len(text) > 500 and any(kw in text.lower() for kw in ["responsibilities", "requirements", "qualifications"]):
                     jd = text[:5000]
                     break
 
-        if not jd:
-            return jsonify({"jd": "", "error": "Could not extract JD — LinkedIn may require login"}), 200
+        if jd:
+            print(f"[fetch-jd] BeautifulSoup OK: {len(jd)} chars")
+            return jsonify({"jd": jd, "title": title, "company": company, "source": "html"})
+    except Exception as be:
+        print(f"[fetch-jd] BeautifulSoup error: {be}")
 
-        return jsonify({"jd": jd, "title": title, "company": company})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+    return jsonify({"jd": "", "title": title, "company": company,
+                    "error": "Could not extract JD — try adding the text manually.",
+                    "source": "failed"}), 200
 
 @app.route("/api/bookmarklet-add", methods=["POST", "OPTIONS"])
 def bookmarklet_add():
