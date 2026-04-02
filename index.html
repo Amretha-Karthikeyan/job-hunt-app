@@ -3770,12 +3770,30 @@ async function mergeBookmarkletJobs(incoming) {
  if (cleanUrl) existingUrls.add(cleanUrl);
  });
  let added = 0;
+ let updated = 0;
  const newJobs = [];
  incoming.forEach((j, idx) => {
  const cleanUrl = (j.url || '').split('?')[0].replace(/\/$/, '');
  const liId = extractLinkedInJobId(cleanUrl);
  // Primary dedup: LinkedIn numeric job ID
- if (liId && existingLiIds.has(liId)) return;
+ if (liId && existingLiIds.has(liId)) {
+   // Job exists — but if role/company looks wrong (bad old import), update them
+   const BAD_VALUES = ['saved','job tracker','applied','easy apply','unknown',''];
+   const existingJob = existing.find(e => (extractLinkedInJobId(e.url) || e.linkedInId) === liId);
+   if (existingJob) {
+     const roleClean = (j.role||'').trim().toLowerCase();
+     const coClean = (j.company||'').trim().toLowerCase();
+     if (BAD_VALUES.includes(existingJob.role?.toLowerCase?.()?.trim()) && !BAD_VALUES.includes(roleClean)) {
+       existingJob.role = j.role;
+       updated++;
+     }
+     if (BAD_VALUES.includes(existingJob.company?.toLowerCase?.()?.trim()) && !BAD_VALUES.includes(coClean)) {
+       existingJob.company = j.company;
+       updated++;
+     }
+   }
+   return;
+ }
  // Secondary dedup: exact URL match
  if (cleanUrl && existingUrls.has(cleanUrl)) return;
  // Assign stable ID use LinkedIn job ID if available, else timestamp+index
@@ -3807,16 +3825,17 @@ async function mergeBookmarkletJobs(incoming) {
  if (cleanUrl) existingUrls.add(cleanUrl);
  added++;
  });
- if (added === 0) {
- toast(` All ${incoming.length} jobs already in tracker nothing new.`, 'success');
+ if (added === 0 && updated === 0) {
+ toast(` All ${incoming.length} jobs already in tracker — nothing new.`, 'success');
  return;
  }
+ // Save whether we added new jobs or just fixed existing ones
  saveJobs(existing);
  renderKanban();
  updateStats();
  renderAnalytics();
  updateDbStatusLine({ source: 'supabase' });
- toast(` ${added} new job(s) imported! ${incoming.length - added > 0 ? `(${incoming.length - added} duplicates skipped)` : ''}`, 'success');
+ toast(` ${added} new job(s) imported! ${updated > 0 ? `${updated} existing fixed. ` : ''}${incoming.length - added > 0 ? `(${incoming.length - added} duplicates skipped)` : ''}`, 'success');
  // Auto-trigger agent for newly imported jobs
  setTimeout(() => triggerAgentAfterImport(newJobs), 1500);
  // Auto-fetch missing JDs then auto-score
