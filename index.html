@@ -616,13 +616,13 @@ function copyBookmarklet() {
  p.push('if(window.__jtRunning){alert("Already running");return;}');
  p.push('window.__jtRunning=true;');
  p.push('var u=location.href;');
- p.push('var isMyItems=u.indexOf("my-items")>-1||u.indexOf("saved-jobs")>-1;');
+ p.push('var isMyItems=u.indexOf("my-items")>-1||u.indexOf("saved-jobs")>-1||u.indexOf("jobs-tracker")>-1;');
 
  // Single job mode
  p.push('if(!isMyItems){');
  p.push('var jobRe=new RegExp("jobs/view/(\\\\d+)");');
  p.push('var jm=u.match(jobRe);');
- p.push('if(!jm){alert("Go to a LinkedIn job page or saved-jobs page");window.__jtRunning=false;return;}');
+ p.push('if(!jm){alert("Go to a LinkedIn job page, saved-jobs page, or jobs-tracker page");window.__jtRunning=false;return;}');
  p.push('var h1=document.querySelector("h1");');
  p.push('var t=h1?h1.innerText.trim():document.title.split("|")[0].trim();');
  p.push('var coEl=document.querySelector(".job-details-jobs-unified-top-card__company-name a,.topcard__org-name-link");');
@@ -661,7 +661,7 @@ function copyBookmarklet() {
  p.push('  for(var up=0;up<10;up++){');
  p.push('    if(!card.parentElement)break;');
  p.push('    card=card.parentElement;');
- p.push('    if(card.offsetHeight>=107&&card.offsetHeight<=300)break;');
+ p.push('    if(card.offsetHeight>=80&&card.offsetHeight<=400)break;');
   p.push('  if((card.innerText||"")\.trim()\.length<5&&card.parentElement)card=card.parentElement;');
  p.push('  }');
  p.push('  var raw=(card.innerText||"").split("\\n");');
@@ -947,7 +947,7 @@ function copyBookmarklet() {
  2 &nbsp;Click the <strong>Copy Bookmarklet</strong> button below<br>
  3 &nbsp;Right-click your bookmarks bar <strong>"Add page"</strong> or <strong>"New bookmark"</strong><br>
  4 &nbsp;Name it <strong>"Job Tracker"</strong>, then <strong>delete the URL field</strong> and paste (<kbd style="background:rgba(0,0,0,0.3);padding:1px 6px;border-radius:4px;">Ctrl+V</kbd>) Save<br>
- 5 &nbsp;Done! Click it on <strong>linkedin.com/jobs/view/</strong> or <strong>linkedin.com/my-items/saved-jobs/</strong>
+ 5 &nbsp;Done! Click it on <strong>linkedin.com/jobs/view/</strong>, <strong>linkedin.com/my-items/saved-jobs/</strong> or <strong>linkedin.com/jobs-tracker/</strong>
  </div>
  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
  <button id="copyBmBtn" onclick="copyBookmarkletToClipboard()" style="background:var(--bg-card);color:var(--accent-purple-light);border:none;padding:10px 22px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">Copy Bookmarklet
@@ -1368,7 +1368,7 @@ function copyBookmarklet() {
  <input id="cfgLinkedInCookie" type="password" placeholder="paste li_at cookie here (optional backup)"
  style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:monospace;">
  <div style="margin-top:6px;font-size:10px;color:#6b7280;line-height:1.5;">
- <strong>How to use:</strong> Click <strong>Copy Bookmarklet</strong> above, save as a bookmark, then click it on any LinkedIn job page or saved-jobs page to import instantly.
+ <strong>How to use:</strong> Click <strong>Copy Bookmarklet</strong> above, save as a bookmark, then click it on any LinkedIn job page, saved-jobs page, or the new <strong>jobs-tracker</strong> page to import instantly.
  </div>
  </div>
  </div>
@@ -3943,7 +3943,7 @@ async function extractLatestJobs() {
  addLog(' Waiting for your approval...');
 
  // Open LinkedIn saved-jobs page
- window.open('https://www.linkedin.com/my-items/saved-jobs/', '_blank');
+ window.open('https://www.linkedin.com/jobs-tracker/', '_blank');
 
  // Poll the server for incoming jobs (the bookmarklet POSTs to /api/linkedin-import)
  let pollCount = 0;
