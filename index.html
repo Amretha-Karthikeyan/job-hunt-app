@@ -631,7 +631,9 @@ function copyBookmarklet() {
  p.push('var jd=jdEl?jdEl.innerText.trim():"";');
  p.push('if(!t){alert("Could not read job title");window.__jtRunning=false;return;}');
  p.push('var single=[{role:t,company:c,url:u.split("?")[0],linkedInId:"li_"+jm[1],jd:jd,source:"LinkedIn",status:"saved"}];');
- p.push('var enc1=btoa(unescape(encodeURIComponent(JSON.stringify(single))));window.open("APPURL/#bm:"+enc1,"_blank");');
+ p.push('var enc1=btoa(unescape(encodeURIComponent(JSON.stringify(single))));');
+ p.push('var w1=window.open("APPURL/#bm:"+enc1,"_blank");');
+ p.push('if(!w1){location.href="APPURL/#bm:"+enc1;}');
  p.push('window.__jtRunning=false;return;}');
 
  // Overlay UI
@@ -735,11 +737,13 @@ function copyBookmarklet() {
  p.push('if(!jobs.length){ov.remove();window.__jtRunning=false;alert("No jobs found.");return;}');
  p.push('mg.textContent="Sending "+jobs.length+" jobs to tracker...";br.style.width="93%";');
  p.push('br.style.width="100%";');
- p.push('mg.textContent="Done! "+jobs.length+" jobs ready. Opening tracker...";');
+ p.push('mg.textContent="Done! "+jobs.length+" jobs ready. Sending to tracker...";');
  p.push('mg.style.color="#16a34a";');
  p.push('await sleep(800);');
- p.push('var enc=btoa(unescape(encodeURIComponent(JSON.stringify(jobs))));');
- p.push('window.open("APPURL/#bm:"+enc,"_blank");');
+ // Form POST: never blocked by popup blockers, no URL length limits
+ p.push('var f=document.createElement("form");f.method="POST";f.action="APPURL/capture-bulk";');
+ p.push('var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(jobs);');
+ p.push('f.appendChild(inp);document.body.appendChild(f);f.submit();');
  p.push('cb.textContent="Close";');
  p.push('window.__jtRunning=false;');
  p.push('})();');
@@ -3695,6 +3699,16 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
  checkHashImport();
  // Check for jobs stored via form POST redirect (bookmarklet uses form POST to bypass CSP)
  checkFormImport();
+ // Check if we arrived via bookmarklet form POST redirect (?imported=N)
+ const importedParam = new URLSearchParams(window.location.search).get('imported');
+ if (importedParam) {
+ history.replaceState(null, '', '/');
+ const n = parseInt(importedParam) || 0;
+ // Reload from Supabase to pick up server-imported jobs
+ const freshLoad = await loadJobsFromSupabase();
+ if (freshLoad.count > 0) { renderKanban(); updateStats(); renderAnalytics(); updateDbStatusLine(freshLoad); }
+ toast(n > 0 ? `${n} LinkedIn jobs imported via bookmarklet!` : 'Bookmarklet import complete — all jobs already in tracker.', 'success');
+ } else
  // Show appropriate toast
  if (loadResult.source === 'supabase' && loadResult.count > 0) {
  toast(` Loaded ${loadResult.count} jobs from cloud`, 'success');

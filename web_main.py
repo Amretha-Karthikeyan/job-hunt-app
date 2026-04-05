@@ -2642,7 +2642,7 @@ def capture():
 
 @app.route("/capture-bulk", methods=["POST"])
 def capture_bulk():
-    import json, os, time
+    import json, os, time, re as _re
     from datetime import date
 
     raw = request.form.get("jobs", "[]")
@@ -2651,50 +2651,108 @@ def capture_bulk():
     except:
         return "Invalid data", 400
 
-    jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
-    try:
-        existing = json.load(open(jobs_file)) if os.path.exists(jobs_file) else []
-    except:
-        existing = []
+    if not isinstance(incoming, list):
+        return "Invalid data", 400
 
-    # Build lookup sets for both URL and title+company
-    seen_urls = set()
-    seen_tc   = set()
-    for j in existing:
-        u = j.get("url","").split("?")[0]
-        tc = (j.get("role","").strip().lower() + "|" + j.get("company","").strip().lower())
-        if u: seen_urls.add(u)
-        seen_tc.add(tc)
-
+    # --- Supabase upsert (source of truth) ---
+    sb = get_supabase()
     added = 0
-    for job in incoming:
-        u  = job.get("url","").split("?")[0]
-        tc = (job.get("role","").strip().lower() + "|" + job.get("company","").strip().lower())
-        if (u and u in seen_urls) or tc in seen_tc:
-            continue
-        existing.append({
-            "id": int(time.time() * 1000) + added,
-            "role": job.get("role","").strip(),
-            "company": job.get("company","").strip(),
-            "location": job.get("location","Singapore"),
-            "url": job.get("url",""),
-            "jd": "",
-            "status": "wishlist",
-            "roleType": job.get("roleType","Business Analyst"),
-            "priority": job.get("priority","Medium"),
-            "source": "LinkedIn",
-            "dateApplied": date.today().isoformat(),
-            "notes": "", "salary": "", "isDemo": False,
-            "fromBookmarklet": True, "checklist": {}
-        })
-        if u: seen_urls.add(u)
-        seen_tc.add(tc)
-        added += 1
 
-    with open(jobs_file, "w") as f:
-        json.dump(existing, f)
+    if sb:
+        try:
+            ex_res = sb.table("jobs").select("url,linkedInId").execute()
+            ex_urls = {(j.get("url") or "").split("?")[0].rstrip("/")
+                       for j in (ex_res.data or []) if j.get("url")}
+            ex_li_ids = {j.get("linkedInId")
+                         for j in (ex_res.data or []) if j.get("linkedInId")}
+        except Exception as e:
+            print(f"[capture-bulk] Supabase read error: {e}")
+            ex_urls, ex_li_ids = set(), set()
 
-    # Redirect back to the tracker — user lands there and clicks "Import Pending Jobs"
+        to_insert = []
+        for job in incoming:
+            clean_url = (job.get("url", "") or "").split("?")[0].rstrip("/")
+            # Extract LinkedIn job ID
+            li_id = ""
+            li_m = _re.search(r"/jobs/view/(\d+)", clean_url)
+            if li_m:
+                li_id = f"li_{li_m.group(1)}"
+            raw_li_id = job.get("linkedInId", "") or ""
+            if not li_id and raw_li_id:
+                li_id = raw_li_id if raw_li_id.startswith("li_") else f"li_{raw_li_id}"
+
+            # Dedup by linkedInId or URL
+            if li_id and li_id in ex_li_ids:
+                continue
+            if clean_url and clean_url in ex_urls:
+                continue
+
+            stable_id = li_id or f"bm_{int(time.time() * 1000)}_{len(to_insert)}"
+            to_insert.append({
+                "id": stable_id,
+                "role": (job.get("role", "") or "").strip() or "Unknown",
+                "company": (job.get("company", "") or "").strip() or "Unknown",
+                "url": clean_url,
+                "linkedInId": li_id,
+                "jd": (job.get("jd", "") or "")[:8000],
+                "status": "saved",
+                "source": "LinkedIn",
+                "roleType": job.get("roleType", "Business Analyst"),
+                "dateApplied": date.today().isoformat(),
+                "datePosted": job.get("datePosted", ""),
+                "companyLogo": job.get("companyLogo", ""),
+                "notes": "", "salary": "", "isDemo": False,
+            })
+            if li_id: ex_li_ids.add(li_id)
+            if clean_url: ex_urls.add(clean_url)
+
+        if to_insert:
+            BATCH = 50
+            for i in range(0, len(to_insert), BATCH):
+                try:
+                    sb.table("jobs").upsert(to_insert[i:i+BATCH], on_conflict="id").execute()
+                except Exception as e:
+                    print(f"[capture-bulk] Supabase upsert batch error: {e}")
+        added = len(to_insert)
+        print(f"[capture-bulk] Supabase: {added} new, {len(incoming) - added} dups skipped")
+
+    else:
+        # Fallback: file storage when Supabase is not configured
+        jobs_file = os.path.join(BASE_DIR, "bookmarked_jobs.json")
+        try:
+            existing = json.load(open(jobs_file)) if os.path.exists(jobs_file) else []
+        except:
+            existing = []
+        seen_urls = set()
+        seen_tc = set()
+        for j in existing:
+            u = j.get("url", "").split("?")[0]
+            tc = (j.get("role", "").strip().lower() + "|" + j.get("company", "").strip().lower())
+            if u: seen_urls.add(u)
+            seen_tc.add(tc)
+        for job in incoming:
+            u = job.get("url", "").split("?")[0]
+            tc = (job.get("role", "").strip().lower() + "|" + job.get("company", "").strip().lower())
+            if (u and u in seen_urls) or tc in seen_tc:
+                continue
+            existing.append({
+                "id": int(time.time() * 1000) + added,
+                "role": job.get("role", "").strip(),
+                "company": job.get("company", "").strip(),
+                "url": job.get("url", ""),
+                "jd": job.get("jd", ""),
+                "status": "saved",
+                "source": "LinkedIn",
+                "roleType": "Business Analyst",
+                "dateApplied": date.today().isoformat(),
+                "notes": "", "salary": "", "isDemo": False,
+            })
+            if u: seen_urls.add(u)
+            seen_tc.add(tc)
+            added += 1
+        with open(jobs_file, "w") as f:
+            json.dump(existing, f)
+
     return redirect(f"/?imported={added}")
 
 
