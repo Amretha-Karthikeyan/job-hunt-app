@@ -2640,19 +2640,32 @@ def capture():
 </body></html>"""
 
 
-@app.route("/capture-bulk", methods=["POST"])
+@app.route("/capture-bulk", methods=["POST", "OPTIONS"])
 def capture_bulk():
+    # CORS preflight for bookmarklet fetch() from linkedin.com
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        return response
+
     import json, os, time, re as _re
     from datetime import date
 
-    raw = request.form.get("jobs", "[]")
-    try:
-        incoming = json.loads(raw)
-    except:
-        return "Invalid data", 400
-
-    if not isinstance(incoming, list):
-        return "Invalid data", 400
+    # Accept both JSON body and form-encoded data
+    if request.is_json:
+        incoming = request.get_json(force=True)
+        if not isinstance(incoming, list):
+            return jsonify({"error": "Expected a JSON array"}), 400
+    else:
+        raw = request.form.get("jobs", "[]")
+        try:
+            incoming = json.loads(raw)
+        except:
+            return jsonify({"error": "Invalid data"}), 400
+        if not isinstance(incoming, list):
+            return jsonify({"error": "Invalid data"}), 400
 
     # --- Supabase upsert (source of truth) ---
     sb = get_supabase()
@@ -2753,6 +2766,11 @@ def capture_bulk():
         with open(jobs_file, "w") as f:
             json.dump(existing, f)
 
+    # JSON request (fetch) gets JSON response; form POST gets redirect
+    if request.is_json:
+        resp = jsonify({"added": added, "skipped": len(incoming) - added})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
     return redirect(f"/?imported={added}")
 
 

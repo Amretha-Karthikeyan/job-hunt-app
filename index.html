@@ -734,11 +734,13 @@ function copyBookmarklet() {
  p.push('mg.textContent="Done! "+jobs.length+" jobs ready. Sending to tracker...";');
  p.push('mg.style.color="#16a34a";');
  p.push('await sleep(800);');
- // Form POST: never blocked by popup blockers, no URL length limits
- p.push('var f=document.createElement("form");f.method="POST";f.action="APPURL/capture-bulk";');
- p.push('var inp=document.createElement("input");inp.type="hidden";inp.name="jobs";inp.value=JSON.stringify(jobs);');
- p.push('f.appendChild(inp);document.body.appendChild(f);f.submit();');
- p.push('cb.textContent="Close";');
+ p.push('try{');
+ p.push('var resp=await fetch("APPURL/capture-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(jobs)});');
+ p.push('var result=await resp.json();');
+ p.push('mg.textContent="Done! "+result.added+" new jobs imported ("+result.skipped+" duplicates skipped)";');
+ p.push('mg.style.color="#16a34a";br.style.width="100%";');
+ p.push('cb.textContent="Open Tracker";cb.onclick=function(){window.open("APPURL/?imported="+result.added,"_blank");ov.remove();};');
+ p.push('}catch(err){mg.textContent="Error: "+err.message;mg.style.color="#dc2626";}');
  p.push('window.__jtRunning=false;');
  p.push('})();');
 
