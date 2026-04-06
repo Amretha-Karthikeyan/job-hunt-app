@@ -668,20 +668,20 @@ function copyBookmarklet() {
  p.push('      for(var up=0;up<12;up++){if(!card.parentElement)break;card=card.parentElement;if(card.offsetHeight>=80&&card.offsetHeight<=500)break;}');
  p.push('    }');
  p.push('    if(isTracker){');
- p.push('      var raw=a.innerText.trim();');
- p.push('      var parts=raw.split(/\\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});');
- p.push('      if(parts.length>=2){');
- p.push('        t=parts[0];');
- p.push('        var compParts=parts[1].split("\xb7");');
+ p.push('      var ps=a.querySelectorAll("p");');
+ p.push('      if(ps.length>=2){');
+ p.push('        t=ps[0].textContent.trim();');
+ p.push('        var compLine=ps[1].textContent.trim();');
+ p.push('        var compParts=compLine.split("\xb7");');
  p.push('        co=compParts[0].trim()||"Unknown";');
+ p.push('        if(ps.length>=3)datePosted=ps[2].textContent.trim();');
  p.push('      } else {');
+ p.push('        var raw=a.innerText.trim();');
  p.push('        var dotParts=raw.split("\xb7");');
  p.push('        t=dotParts[0].trim();');
  p.push('        co=dotParts.length>1?dotParts[1].trim():"Unknown";');
  p.push('      }');
- p.push('      var dateM=raw.match(/((?:Re)?[Pp]osted\\s+[^\\n]+ago)/);');
- p.push('      if(dateM)datePosted=dateM[1];');
- p.push('      var logoEl=a.querySelector("img");if(logoEl)logo=logoEl.src;');
+ p.push('      var logoEl=a.querySelector("img");if(logoEl)logo=logoEl.src;')
  p.push('    } else {');
  p.push('      var raw=(card.innerText||"").split("\\n");');
  p.push('      var lines=[];');
@@ -692,7 +692,7 @@ function copyBookmarklet() {
  p.push('      var logoEl=card.querySelector("img[src*=company-logo],img[src*=companyLogo]");if(logoEl)logo=logoEl.src;');
  p.push('    }');
  p.push('    var tl=t.toLowerCase();');
- p.push('    var isNoise=tl==="saved"||tl==="job tracker"||tl==="applied"||tl==="easy apply"||tl.length<2||t.length>120||');
+ p.push('    var isNoise=tl==="saved"||tl==="job tracker"||tl==="applied"||tl==="easy apply"||tl.length<2||t.length>200||');
  p.push('      tl.indexOf("build the career")>-1||tl.indexOf("reactivate")>-1||tl.indexOf("premium")>-1||');
  p.push('      tl.indexOf("profile viewers")>-1||tl.indexOf("followers")>-1||tl.indexOf("start a post")>-1||');
  p.push('      tl.indexOf("lead business analyst @ kpmg")>-1;');
