@@ -659,37 +659,38 @@ function copyBookmarklet() {
  p.push('    var a=links[li];');
  p.push('    var href=(a.href||"").split("?")[0];');
  p.push('    if(href.indexOf("/jobs/view/")<0||seen[href])continue;');
+ // Skip "Apply" or tiny links (second link on same card)
+ p.push('    var aTxt=(a.innerText||"").trim().toLowerCase();');
+ p.push('    if(aTxt==="apply"||aTxt==="easy apply"||aTxt.length<3)continue;');
  p.push('    seen[href]=true;');
  p.push('    var jidx=href.indexOf("/jobs/view/")+11;');
  p.push('    var jid=href.substring(jidx).replace(/\\/.*$/,"");');
  p.push('    var t="",co="Unknown",datePosted="",logo="";');
- p.push('    var card=a;');
- p.push('    if(!isTracker){');
- p.push('      for(var up=0;up<12;up++){if(!card.parentElement)break;card=card.parentElement;if(card.offsetHeight>=80&&card.offsetHeight<=500)break;}');
- p.push('    }');
- p.push('    if(isTracker){');
- p.push('      var ps=a.querySelectorAll("p");');
- p.push('      if(ps.length>=2){');
- p.push('        t=ps[0].textContent.trim();');
- p.push('        var compLine=ps[1].textContent.trim();');
- p.push('        var compParts=compLine.split("\xb7");');
- p.push('        co=compParts[0].trim()||"Unknown";');
- p.push('        if(ps.length>=3)datePosted=ps[2].textContent.trim();');
- p.push('      } else {');
- p.push('        var raw=a.innerText.trim();');
- p.push('        var dotParts=raw.split("\xb7");');
- p.push('        t=dotParts[0].trim();');
- p.push('        co=dotParts.length>1?dotParts[1].trim():"Unknown";');
- p.push('      }');
- p.push('      var logoEl=a.querySelector("img");if(logoEl)logo=logoEl.src;')
+ // Try structured <p> extraction first (works on both tracker and saved-jobs)
+ p.push('    var ps=a.querySelectorAll("p");');
+ p.push('    if(ps.length>=2){');
+ p.push('      t=ps[0].textContent.trim();');
+ p.push('      var compLine=ps[1].textContent.trim();');
+ p.push('      var compParts=compLine.split("\xb7");');
+ p.push('      co=compParts[0].trim()||"Unknown";');
+ p.push('      if(ps.length>=3)datePosted=ps[2].textContent.trim();');
+ p.push('      var logoEl=a.querySelector("img");if(logoEl)logo=logoEl.src;');
  p.push('    } else {');
- p.push('      var raw=(card.innerText||"").split("\\n");');
- p.push('      var lines=[];');
- p.push('      for(var ri=0;ri<raw.length;ri++){var ln=raw[ri].trim();if(ln.length>1&&ln!==", Verified"&&ln.indexOf("com.linkedin")<0&&ln.charAt(0)!=="{")lines.push(ln);}');
- p.push('      t=lines[0]||"";');
- p.push('      co=lines[1]||"Unknown";');
- p.push('      datePosted=lines[3]||"";');
- p.push('      var logoEl=card.querySelector("img[src*=company-logo],img[src*=companyLogo]");if(logoEl)logo=logoEl.src;');
+ // Fallback: walk up to parent card and split innerText
+ p.push('      var card=a;');
+ p.push('      for(var up=0;up<12;up++){if(!card.parentElement)break;card=card.parentElement;if(card.offsetHeight>=80&&card.offsetHeight<=500)break;}');
+ p.push('      var cps=card.querySelectorAll("p");');
+ p.push('      if(cps.length>=2){');
+ p.push('        t=cps[0].textContent.trim();');
+ p.push('        var cl2=cps[1].textContent.trim();var cp2=cl2.split("\xb7");co=cp2[0].trim()||"Unknown";');
+ p.push('        if(cps.length>=3)datePosted=cps[2].textContent.trim();');
+ p.push('      } else {');
+ p.push('        var rawL=(card.innerText||"").split("\\n");');
+ p.push('        var lines=[];');
+ p.push('        for(var ri=0;ri<rawL.length;ri++){var ln=rawL[ri].trim();if(ln.length>1&&ln!==", Verified"&&ln.indexOf("com.linkedin")<0&&ln.charAt(0)!=="{")lines.push(ln);}');
+ p.push('        t=lines[0]||"";co=lines[1]||"Unknown";datePosted=lines[3]||"";');
+ p.push('      }');
+ p.push('      var logoEl=card.querySelector("img[src*=company-logo],img[src*=companyLogo],img[src*=logo]");if(logoEl)logo=logoEl.src;');
  p.push('    }');
  p.push('    var tl=t.toLowerCase();');
  p.push('    var isNoise=tl==="saved"||tl==="job tracker"||tl==="applied"||tl==="easy apply"||tl.length<2||t.length>200||');
@@ -730,17 +731,26 @@ function copyBookmarklet() {
 
  p.push('if(!jobs.length){ov.remove();window.__jtRunning=false;alert("No jobs found.");return;}');
  p.push('mg.textContent="Sending "+jobs.length+" jobs to tracker...";br.style.width="93%";');
- p.push('br.style.width="100%";');
- p.push('mg.textContent="Done! "+jobs.length+" jobs ready. Sending to tracker...";');
- p.push('mg.style.color="#16a34a";');
- p.push('await sleep(800);');
+ // Strip companyLogo to reduce payload size for hash-based transfer
+ p.push('var lite=jobs.map(function(j){return{role:j.role,company:j.company,url:j.url,linkedInId:j.linkedInId,source:j.source,status:j.status,datePosted:j.datePosted};});');
+ // Try fetch first (best UX), fall back to hash redirect (always works)
+ p.push('var sent=false;');
  p.push('try{');
- p.push('var resp=await fetch("APPURL/capture-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(jobs)});');
+ p.push('var resp=await fetch("APPURL/capture-bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lite)});');
+ p.push('if(!resp.ok)throw new Error("HTTP "+resp.status);');
  p.push('var result=await resp.json();');
+ p.push('sent=true;');
  p.push('mg.textContent="Done! "+result.added+" new jobs imported ("+result.skipped+" duplicates skipped)";');
  p.push('mg.style.color="#16a34a";br.style.width="100%";');
- p.push('cb.textContent="Open Tracker";cb.onclick=function(){window.open("APPURL/?imported="+result.added,"_blank");ov.remove();};');
- p.push('}catch(err){mg.textContent="Error: "+err.message;mg.style.color="#dc2626";}');
+ p.push('cb.textContent="Open Tracker";cb.onclick=function(){window.open("APPURL","_blank");ov.remove();};');
+ p.push('}catch(e){}');
+ // Fallback: encode as base64 hash and navigate (no CORS/CSP issues)
+ p.push('if(!sent){');
+ p.push('mg.textContent="Redirecting with "+lite.length+" jobs...";');
+ p.push('br.style.width="100%";');
+ p.push('var enc=btoa(unescape(encodeURIComponent(JSON.stringify(lite))));');
+ p.push('location.href="APPURL/#bm:"+enc;');
+ p.push('}');
  p.push('window.__jtRunning=false;');
  p.push('})();');
 

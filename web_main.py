@@ -101,9 +101,10 @@ class _QueryBuilder:
         return self
 
     # --- mutations ---
-    def upsert(self, data, on_conflict=None):
+    def upsert(self, data, on_conflict=None, ignore_duplicates=False):
         self._method = "POST"
-        self._headers["Prefer"] = "resolution=merge-duplicates,return=representation"
+        resolution = "ignore-duplicates" if ignore_duplicates else "merge-duplicates"
+        self._headers["Prefer"] = f"resolution={resolution},return=representation"
         if on_conflict:
             self._params["on_conflict"] = on_conflict
         self._body = data
@@ -2672,20 +2673,11 @@ def capture_bulk():
     added = 0
 
     if sb:
-        try:
-            ex_res = sb.table("jobs").select("url,linkedInId").execute()
-            ex_urls = {(j.get("url") or "").split("?")[0].rstrip("/")
-                       for j in (ex_res.data or []) if j.get("url")}
-            ex_li_ids = {j.get("linkedInId")
-                         for j in (ex_res.data or []) if j.get("linkedInId")}
-        except Exception as e:
-            print(f"[capture-bulk] Supabase read error: {e}")
-            ex_urls, ex_li_ids = set(), set()
-
+        # Direct upsert — Supabase handles dedup via ON CONFLICT on id
         to_insert = []
+        seen_ids = set()
         for job in incoming:
             clean_url = (job.get("url", "") or "").split("?")[0].rstrip("/")
-            # Extract LinkedIn job ID
             li_id = ""
             li_m = _re.search(r"/jobs/view/(\d+)", clean_url)
             if li_m:
@@ -2694,13 +2686,11 @@ def capture_bulk():
             if not li_id and raw_li_id:
                 li_id = raw_li_id if raw_li_id.startswith("li_") else f"li_{raw_li_id}"
 
-            # Dedup by linkedInId or URL
-            if li_id and li_id in ex_li_ids:
-                continue
-            if clean_url and clean_url in ex_urls:
-                continue
-
             stable_id = li_id or f"bm_{int(time.time() * 1000)}_{len(to_insert)}"
+            if stable_id in seen_ids:
+                continue
+            seen_ids.add(stable_id)
+
             to_insert.append({
                 "id": stable_id,
                 "role": (job.get("role", "") or "").strip() or "Unknown",
@@ -2716,18 +2706,20 @@ def capture_bulk():
                 "companyLogo": job.get("companyLogo", ""),
                 "notes": "", "salary": "", "isDemo": False,
             })
-            if li_id: ex_li_ids.add(li_id)
-            if clean_url: ex_urls.add(clean_url)
 
         if to_insert:
             BATCH = 50
             for i in range(0, len(to_insert), BATCH):
                 try:
-                    sb.table("jobs").upsert(to_insert[i:i+BATCH], on_conflict="id").execute()
+                    sb.table("jobs").upsert(
+                        to_insert[i:i+BATCH],
+                        on_conflict="id",
+                        ignore_duplicates=True
+                    ).execute()
                 except Exception as e:
                     print(f"[capture-bulk] Supabase upsert batch error: {e}")
         added = len(to_insert)
-        print(f"[capture-bulk] Supabase: {added} new, {len(incoming) - added} dups skipped")
+        print(f"[capture-bulk] Supabase: upserted {added} jobs ({len(incoming)} incoming)")
 
     else:
         # Fallback: file storage when Supabase is not configured
