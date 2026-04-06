@@ -669,7 +669,7 @@ function copyBookmarklet() {
  p.push('    }');
  p.push('    if(isTracker){');
  p.push('      var raw=a.innerText.trim();');
- p.push('      var parts=raw.split(/\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});');
+ p.push('      var parts=raw.split(/\\n/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});');
  p.push('      if(parts.length>=2){');
  p.push('        t=parts[0];');
  p.push('        var compParts=parts[1].split("\xb7");');
@@ -679,11 +679,11 @@ function copyBookmarklet() {
  p.push('        t=dotParts[0].trim();');
  p.push('        co=dotParts.length>1?dotParts[1].trim():"Unknown";');
  p.push('      }');
- p.push('      var dateM=raw.match(/((?:Re)?[Pp]osted\s+[^\n]+ago)/);');
+ p.push('      var dateM=raw.match(/((?:Re)?[Pp]osted\\s+[^\\n]+ago)/);');
  p.push('      if(dateM)datePosted=dateM[1];');
  p.push('      var logoEl=a.querySelector("img");if(logoEl)logo=logoEl.src;');
  p.push('    } else {');
- p.push('      var raw=(card.innerText||"").split("\n");');
+ p.push('      var raw=(card.innerText||"").split("\\n");');
  p.push('      var lines=[];');
  p.push('      for(var ri=0;ri<raw.length;ri++){var ln=raw[ri].trim();if(ln.length>1&&ln!==", Verified"&&ln.indexOf("com.linkedin")<0&&ln.charAt(0)!=="{")lines.push(ln);}');
  p.push('      t=lines[0]||"";');
