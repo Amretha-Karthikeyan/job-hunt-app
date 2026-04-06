@@ -661,7 +661,7 @@ function copyBookmarklet() {
  p.push('    if(href.indexOf("/jobs/view/")<0||seen[href])continue;');
  p.push('    seen[href]=true;');
  p.push('    var jidx=href.indexOf("/jobs/view/")+11;');
- p.push('    var jid=href.substring(jidx).replace(/\/.*$/,"");');
+ p.push('    var jid=href.substring(jidx).replace(/\\/.*$/,"");');
  p.push('    var t="",co="Unknown",datePosted="",logo="";');
  p.push('    var card=a;');
  p.push('    if(!isTracker){');
