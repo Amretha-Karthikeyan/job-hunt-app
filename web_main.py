@@ -1302,6 +1302,7 @@ def upsert_jobs():
                 "salary":           j.get("salary", ""),
                 "location":         j.get("location", ""),
                 "dateApplied":      j.get("dateApplied", ""),
+                "dateAdded":        j.get("dateAdded", ""),
                 "datePosted":       j.get("datePosted", ""),
                 "companyLogo":      j.get("companyLogo", ""),
                 "aiScore":          float(j["aiScore"]) if j.get("aiScore") is not None else None,
@@ -1310,6 +1311,7 @@ def upsert_jobs():
                 "aiPriority":       j.get("aiPriority", ""),
                 "matchedKeywords":  j.get("matchedKeywords") or [],
                 "jdOnlyKeywords":   j.get("jdOnlyKeywords") or [],
+                "scoringVersion":   j.get("scoringVersion", ""),
                 "notes":            j.get("notes", ""),
                 "checklist":        j.get("checklist") or {},
                 "resume_variant":   j.get("resume_variant", ""),
@@ -1951,286 +1953,418 @@ def import_job():
     return jsonify(result)
 
 
+# ═══════════════════════════════════════════════════════════════
+# SCORING VERSION — bump this to trigger automatic rescore
+# ═══════════════════════════════════════════════════════════════
+SCORING_VERSION = "v3.0_jnj_2026-04-28"
+
 @app.route("/api/rank-jobs", methods=["POST"])
 def rank_jobs():
     """
-    JD keyword extraction + profile match scoring. No AI API — instant, never fails.
-    Also returns matched_keywords per job so resume generation can reuse them.
-
-    Scoring (max 10):
-      Keyword match score   0–4.5 pts  (weighted by category)
-      Role type match       0–2.0 pts
-      Company bonus/penalty ±2.0 pts
-      Product co signals    0–1.0 pt
-      WLB signals           0–0.5 pt
-      Singapore location    0–0.5 pt
-      Visa sponsorship      0–0.5 pt  (+override to 0 if blocked)
+    Jack & Jill Brief Framework scoring. 6 dimensions, no LLM.
+    Extracts keywords from candidate resume and matches against JD.
+    Detects product vs consulting from JD language, not hardcoded lists.
+    
+    Dimensions (max 10):
+      1. Role & Seniority Fit        0–2.0
+      2. Skills Match (resume vs JD) 0–3.0
+      3. Work Environment & Industry 0–2.0
+      4. Location & Sponsorship      0–1.0
+      5. Compensation Signals        0–0.5
+      6. Domain & Sector Fit         0–1.5
     """
     import re as _re
 
     data = request.json or {}
     jobs = data.get("jobs", [])
+    force_rescore = data.get("force_rescore", False)
     if not jobs:
         return jsonify({"error": "No jobs provided"}), 400
 
     P = get_active_profile()
 
-    # ── Candidate profile text (for matching) ────────────────────────────
-    profile_text = " ".join([
-        P.get("summary", ""),
-        P.get("headline", ""),
-        " ".join(P.get("skills", [])),
-        " ".join(
-            b for exp in P.get("experience", [])
-            for b in exp.get("bullets", []) + exp.get("achievements", [])
-        ),
-        # hardcode known skills not always in profile
-        "agile safe scrum kanban jira confluence sql python tableau power bi api "
-        "roadmap backlog user stories sprint stakeholder kpi dashboard fintech "
-        "banking payments digital transformation product roadmap mvp uat change management "
-        "business analysis product owner product manager ba pm po saas b2b b2c "
-        "generative ai llm prompt engineering flask supabase render",
-    ]).lower()
+    # ── Build profile keyword set from resume ────────────────────
+    profile_keywords = set()
+    for s in P.get("skills", []):
+        profile_keywords.add(s.lower().strip())
+        for word in s.lower().split():
+            if len(word) > 2:
+                profile_keywords.add(word)
 
-    # ── Keyword categories with weights ──────────────────────────────────
-    # (keyword, weight, category_label)
-    KEYWORD_DEFS = [
-        # Role keywords — weight 0.6
-        ("product owner",           0.6, "role"),
-        ("product manager",         0.6, "role"),
-        ("product management",      0.5, "role"),
-        ("business analyst",        0.6, "role"),
-        ("product lead",            0.5, "role"),
-        ("product operations",      0.5, "role"),
-        ("delivery manager",        0.4, "role"),
-        ("scrum master",            0.4, "role"),
-        ("agile coach",             0.4, "role"),
-        # Methodology keywords — weight 0.35
-        ("agile",                   0.35, "method"),
-        ("safe",                    0.35, "method"),
-        ("scrum",                   0.35, "method"),
-        ("kanban",                  0.35, "method"),
-        ("sprint",                  0.3,  "method"),
-        ("pi planning",             0.35, "method"),
-        # Tools — weight 0.3
-        ("jira",                    0.3,  "tool"),
-        ("confluence",              0.3,  "tool"),
-        ("sql",                     0.3,  "tool"),
-        ("python",                  0.3,  "tool"),
-        ("tableau",                 0.3,  "tool"),
-        ("power bi",                0.3,  "tool"),
-        ("figma",                   0.25, "tool"),
-        ("miro",                    0.25, "tool"),
-        ("excel",                   0.2,  "tool"),
-        ("notion",                  0.2,  "tool"),
-        ("amplitude",               0.3,  "tool"),
-        ("mixpanel",                0.3,  "tool"),
-        ("looker",                  0.3,  "tool"),
-        # Product skills — weight 0.35
-        ("product roadmap",         0.35, "skill"),
-        ("roadmap",                 0.3,  "skill"),
-        ("backlog",                 0.35, "skill"),
-        ("user stories",            0.35, "skill"),
-        ("stakeholder management",  0.35, "skill"),
-        ("stakeholder",             0.25, "skill"),
-        ("kpi",                     0.3,  "skill"),
-        ("dashboard",               0.25, "skill"),
-        ("data analysis",           0.3,  "skill"),
-        ("data-driven",             0.3,  "skill"),
-        ("go-to-market",            0.35, "skill"),
-        ("gtm",                     0.3,  "skill"),
-        ("mvp",                     0.3,  "skill"),
-        ("uat",                     0.3,  "skill"),
-        ("change management",       0.3,  "skill"),
-        ("product vision",          0.35, "skill"),
-        ("discovery",               0.3,  "skill"),
-        ("a/b testing",             0.3,  "skill"),
-        ("experimentation",         0.3,  "skill"),
-        ("api",                     0.25, "skill"),
-        ("api integration",         0.3,  "skill"),
-        ("requirements",            0.25, "skill"),
-        ("business case",           0.25, "skill"),
-        ("seo",                     0.3,  "skill"),
-        ("cro",                     0.3,  "skill"),
-        ("ux",                      0.25, "skill"),
-        ("user research",           0.3,  "skill"),
-        ("customer journey",        0.3,  "skill"),
-        # Domain — weight 0.3
-        ("fintech",                 0.35, "domain"),
-        ("banking",                 0.3,  "domain"),
-        ("payments",                0.3,  "domain"),
-        ("digital transformation",  0.3,  "domain"),
-        ("saas",                    0.3,  "domain"),
-        ("b2b",                     0.25, "domain"),
-        ("b2c",                     0.25, "domain"),
-        ("platform",                0.2,  "domain"),
-        ("financial services",      0.3,  "domain"),
-        ("e-commerce",              0.25, "domain"),
-        ("marketplace",             0.25, "domain"),
-        # AI/ML — weight 0.4
-        ("generative ai",           0.4,  "ai"),
-        ("llm",                     0.4,  "ai"),
-        ("machine learning",        0.35, "ai"),
-        ("ai",                      0.3,  "ai"),
-        ("prompt engineering",      0.4,  "ai"),
-        ("nlp",                     0.35, "ai"),
+    exp_text = ""
+    for exp in P.get("experience", []):
+        for b in exp.get("bullets", []) + exp.get("achievements", []):
+            exp_text += " " + b
+    exp_text += " " + P.get("summary", "")
+    exp_text += " " + P.get("headline", "")
+    exp_text += " " + P.get("certification", "")
+    for proj in P.get("projects", []):
+        for b in proj.get("bullets", []):
+            exp_text += " " + b
+        exp_text += " " + proj.get("tech", "")
+    exp_lower = exp_text.lower()
+
+    # Phrase patterns to detect in both resume and JD
+    phrase_patterns = [
+        "product owner", "product manager", "business analyst", "product backlog",
+        "sprint delivery", "digital transformation", "stakeholder management",
+        "agile", "safe", "scrum", "kanban", "jira", "confluence",
+        "sql", "python", "tableau", "power bi", "api integration", "api",
+        "data migration", "go-live", "uat", "test scenarios",
+        "loan iq", "core banking", "lending", "trade", "m&a",
+        "financial services", "banking", "fintech", "payments",
+        "change management", "risk mitigation", "budget forecasting",
+        "kpi", "dashboard", "roadmap", "backlog", "user stories",
+        "requirements", "functional", "non-functional", "solution design",
+        "vendor management", "data analysis", "impact analysis",
+        "generative ai", "llm", "prompt engineering", "claude",
+        "flask", "render", "supabase", "ai product",
+        "cross-functional", "squad", "pi planning", "sprint ceremonies",
+        "product vision", "business case", "seo", "cro", "ux",
+        "a/b testing", "mvp", "go-to-market",
+        "loan servicing", "loan lifecycle", "origination", "underwriting",
+        "credit", "wealth", "interest computation", "reconciliation",
+        "system integration", "legacy system", "platform",
+        "delivery", "project management", "team leadership",
+        "stakeholder", "regulatory", "compliance", "governance",
+        "sdlc", "release management", "defect", "regression",
+        "excel", "microsoft project", "power bi",
     ]
 
-    BONUS_COMPANIES = [
-        "grab", "sea", "shopee", "gojek", "airwallex", "stripe", "revolut",
-        "wise", "transferwise", "propertyguru", "carousell", "govtech",
-        "dbs", "ocbc", "uob", "singlife", "nium", "rapyd", "aspire",
-        "lazada", "bytedance", "tiktok", "foodpanda", "delivery hero",
-        "google", "meta", "netflix", "amazon", "apple", "microsoft",
+    resume_phrases = set()
+    for phrase in phrase_patterns:
+        if phrase in exp_lower:
+            resume_phrases.add(phrase)
+    all_profile_terms = profile_keywords | resume_phrases
+
+    # ── Detection signals ────────────────────────────────────────
+    PRODUCT_SIGNALS = [
+        "our product", "we build", "product-led", "product team", "product org",
+        "our platform", "our app", "our users", "our customers", "user-facing",
+        "in-house", "own product", "ship features", "product squads",
+        "product development", "engineering team", "tech company",
+        "series a", "series b", "series c", "series d", "startup",
+        "scale-up", "venture-backed", "ipo", "our technology",
+        "b2b saas", "b2c", "marketplace", "consumer product",
+        "fintech", "proptech", "healthtech", "edtech", "insurtech",
+        "we are building", "our mission", "join us",
     ]
-    PENALTY_COMPANIES = [
-        "kpmg", "deloitte", "pwc", "ey ", "ernst", "accenture", "mckinsey",
-        "bcg", "bain", "ibm", "wipro", "infosys", "tcs", "cognizant",
-        "capgemini", "ncs ", "dxc", "fujitsu",
+    CONSULTING_SIGNALS = [
+        "consulting", "client engagement", "billable", "advisory",
+        "professional services", "service delivery", "client-facing",
+        "engagement manager", "partner-track", "consulting firm",
+        "big four", "big 4", "management consulting",
+        "our clients", "client solutions", "project-based",
     ]
-    VISA_BLOCK_PHRASES = [
-        "no sponsorship", "citizen or pr", "citizen/pr", "pr only", "citizens only",
-        "must be a citizen", "must be singapore", "singaporean only",
-        "ep not provided", "no ep", "no work pass", "own ep",
+    GOVT_SIGNALS = [
+        "govtech", "government", "public sector", "ministry",
+        "civil service", "statutory board", "public service",
+        "national", "defence", "dsta", "csit", "gta ",
+    ]
+    VISA_BLOCK = [
+        "no sponsorship", "citizen or pr", "citizen/pr", "pr only",
+        "citizens only", "must be a citizen", "must be singapore",
+        "singaporean only", "ep not provided", "no ep", "own ep",
         "singapore citizens and pr", "singapore citizen or pr",
-        "must hold", "only singaporean",
+        "only singaporean", "sc/pr only", "citizens/prs only",
     ]
-    VISA_OK_PHRASES = [
-        "visa sponsorship", "ep sponsorship", "work pass", "s pass", "ep provided",
-        "sponsorship available", "open to ep", "employment pass provided",
-        "relocation support", "open to all nationalities",
+    VISA_OK = [
+        "visa sponsorship", "ep sponsorship", "work pass", "s pass",
+        "ep provided", "sponsorship available", "open to ep",
+        "employment pass provided", "relocation support",
+        "open to all nationalities", "all nationalities",
     ]
-    WLB_SIGNALS = [
-        "work life balance", "work-life", "flexible", "hybrid", "remote",
-        "well-being", "wellness", "benefits", "learning & development",
-        "flat structure", "transparent", "autonomy", "ownership culture",
+
+    # Role patterns by tier
+    ROLE_EXCELLENT = [
+        "chief of staff", "founder's associate", "founder associate",
+        "product manager", "senior pm", "senior product manager",
+        "gtm lead", "gtm manager", "strategy manager",
+        "digital product manager", "product lead",
     ]
-    PRODUCT_CO_SIGNALS = [
-        "product-led", "product company", "in-house", "saas", "platform team",
-        "b2b", "b2c", "consumer product", "marketplace", "fintech",
-        "proptech", "healthtech", "edtech", "our product", "we build",
-        "product organisation", "product org",
+    ROLE_GOOD = [
+        "product owner", "business analyst", "lead ba",
+        "business development manager", "operations manager",
+        "delivery manager", "senior analyst", "analyst",
+        "functional consultant", "techno-functional", "techno functional",
     ]
-    SG_SIGNALS = [
-        "singapore", " sg ", "sgd", "raffles", "tanjong pagar",
-        "one-north", "mapletree", "mbfc", "orchard", "marina bay",
+    ROLE_BORDERLINE = [
+        "product marketing", "customer success", "account management",
+        "project manager", "program manager", "scrum master", "agile coach",
+    ]
+    ROLE_NOT_FIT = [
+        "software engineer", "developer", "devops", "sre",
+        "data engineer", "ml engineer", "cloud engineer",
+        "accountant", "controller", "finance manager",
+        "maintenance", "support engineer", "qa engineer",
+        "production code", "write code", "hands-on coding",
     ]
 
     rankings = []
 
     for j in jobs:
-        jd_raw  = (j.get("jd") or "")
-        role    = (j.get("role") or "").lower()
-        company = (j.get("company") or "").lower()
-        jd      = jd_raw.lower()
-        combined = jd + " " + role + " " + company
+        jd_raw = (j.get("jd") or "").strip()
+        role   = (j.get("role") or "")
+        company = (j.get("company") or "")
 
-        score   = 0.0
-        reasons = []
-        matched_keywords = []   # reused by resume generation
-
-        # ── 1. Visa hard override ─────────────────────────────────────────
-        visa_blocked = any(p in combined for p in VISA_BLOCK_PHRASES)
-        visa_ok      = any(p in combined for p in VISA_OK_PHRASES)
-        if visa_blocked and not visa_ok:
+        # Skip if no JD
+        if len(jd_raw) < 50:
             rankings.append({
-                "id":               j.get("id"),
-                "score":            0,
-                "label":            "❌ Weak Fit",
-                "priority":         "Skip",
-                "reason":           "No visa sponsorship — requires Singapore Citizen/PR only.",
-                "matched_keywords": [],
+                "id": j.get("id"), "score": None,
+                "label": "⚠️ No JD", "priority": "Fetch JD",
+                "reason": "No job description — fetch JD first.",
+                "scoringVersion": SCORING_VERSION,
+                "matched_keywords": [], "jd_only_keywords": [],
+                "dimensions": {},
             })
             continue
 
-        # ── 2. Extract JD keywords & match against profile ───────────────
-        # For each keyword in our dictionary: check if it appears in JD AND in profile
-        jd_present      = []  # keywords found in JD
-        profile_matched = []  # keywords found in both JD + profile
-        kw_score        = 0.0
+        # Skip if already scored at current version (unless force)
+        if not force_rescore and j.get("scoringVersion") == SCORING_VERSION and j.get("aiScore") is not None:
+            rankings.append({
+                "id": j.get("id"), "score": j.get("aiScore"),
+                "label": j.get("aiLabel", ""), "priority": j.get("aiPriority", ""),
+                "reason": j.get("aiReason", ""),
+                "scoringVersion": SCORING_VERSION,
+                "matched_keywords": j.get("matchedKeywords", j.get("matched_keywords", [])),
+                "jd_only_keywords": j.get("jdOnlyKeywords", j.get("jd_only_keywords", [])),
+            })
+            continue
 
-        for kw, weight, cat in KEYWORD_DEFS:
-            if kw in jd or kw in combined:
-                jd_present.append((kw, weight, cat))
-                if kw in profile_text:
-                    profile_matched.append((kw, weight, cat))
-                    kw_score += weight
+        jd = jd_raw.lower()
+        role_l = role.lower()
+        company_l = company.lower()
+        job_location = (j.get("location") or "").lower()
+        combined = jd + " " + role_l + " " + company_l + " " + job_location
 
-        kw_score = min(4.5, kw_score)
-        score += kw_score
+        # ── HARD BLOCK: Visa ─────────────────────────────────────
+        if any(p in combined for p in VISA_BLOCK) and not any(p in combined for p in VISA_OK):
+            rankings.append({
+                "id": j.get("id"), "score": 0,
+                "label": "🚫 Ineligible", "priority": "Skip",
+                "reason": "Requires Singapore Citizen/PR only.",
+                "scoringVersion": SCORING_VERSION,
+                "matched_keywords": [], "jd_only_keywords": [],
+                "dimensions": {"visa": {"score": 0, "max": 0, "note": "blocked"}},
+            })
+            continue
 
-        # Top matched keywords for display + resume reuse
-        matched_keywords = [kw for kw, _, _ in sorted(profile_matched, key=lambda x: -x[1])[:15]]
-        jd_only_keywords = [kw for kw, _, _ in jd_present if kw not in matched_keywords][:8]
+        dimensions = {}
 
-        if profile_matched:
-            top5 = ", ".join(matched_keywords[:5])
-            reasons.append(f"Profile matches {len(profile_matched)} JD keywords: {top5}")
+        # ══ DIM 1: Role & Seniority (0–2.0) ═══════════════════
+        role_score = 0.0
+        role_note = ""
 
-        # ── 3. Role type match (0–2 pts) ─────────────────────────────────
-        role_kws = [kw for kw, _, cat in profile_matched if cat == "role"]
-        jd_role_kws = [kw for kw, _, cat in jd_present if cat == "role"]
-        role_score = min(2.0, len(jd_role_kws) * 0.7)
-        score += role_score
-        if jd_role_kws:
-            reasons.append(f"Role: {jd_role_kws[0]}")
-
-        # ── 4. Company bonus / penalty ────────────────────────────────────
-        co_bonus   = any(b in company for b in BONUS_COMPANIES)
-        co_penalty = any(p in company for p in PENALTY_COMPANIES)
-        if co_bonus:
-            score += 2
-            reasons.append(f"Target company ✓")
-        elif co_penalty:
-            score = min(score, 4.0)
-            reasons.append("Consulting firm — capped")
-
-        # ── 5. Product company signals (+1) ──────────────────────────────
-        if any(s in combined for s in PRODUCT_CO_SIGNALS):
-            score += 1
-            reasons.append("Product/in-house company")
-
-        # ── 6. WLB signals (+0.5) ────────────────────────────────────────
-        if any(s in combined for s in WLB_SIGNALS):
-            score += 0.5
-            reasons.append("Good WLB signals")
-
-        # ── 7. Singapore location (+0.5) ─────────────────────────────────
-        if any(s in combined for s in SG_SIGNALS):
-            score += 0.5
-
-        # ── 8. Visa sponsorship offered (+0.5) ───────────────────────────
-        if visa_ok:
-            score += 0.5
-            reasons.append("Visa/EP sponsorship available ✓")
-
-        score = round(min(10.0, max(1.0, score)), 1)
-
-        # ── Label + priority ─────────────────────────────────────────────
-        if score >= 8:
-            label, priority = "🔥 Strong Match", "Apply Today"
-        elif score >= 6.5:
-            label, priority = "✅ Good Fit",     "Apply This Week"
-        elif score >= 4.5:
-            label, priority = "🟡 Possible",     "Lower Priority"
+        if any(r in role_l for r in ROLE_NOT_FIT):
+            if any(tf in combined for tf in ["techno-functional", "techno functional",
+                                              "functional", "business analyst",
+                                              "bridge business", "business needs",
+                                              "translate.*requirements"]):
+                role_score = 1.5
+                role_note = "Dev-titled but techno-functional"
+            else:
+                role_score = 0.0
+                role_note = "Pure dev/engineering role"
+        elif any(r in role_l for r in ROLE_EXCELLENT):
+            role_score = 2.0
+            role_note = "Excellent role match"
+        elif any(r in role_l for r in ROLE_GOOD):
+            role_score = 1.5
+            role_note = "Good role match"
+        elif any(r in role_l for r in ROLE_BORDERLINE):
+            role_score = 0.8
+            role_note = "Borderline role"
         else:
-            label, priority = "❌ Weak Fit",     "Skip"
+            if any(kw in combined for kw in ["techno-functional", "techno functional",
+                                              "translating.*requirements",
+                                              "bridge business needs", "business stakeholders",
+                                              "product backlog", "user stories", "roadmap",
+                                              "stakeholder management", "product owners",
+                                              "functional direction", "functional consultant",
+                                              "business requirements"]):
+                role_score = 1.5
+                role_note = "JD describes techno-functional/BA work"
+            else:
+                role_score = 0.5
+                role_note = "Unclear role alignment"
 
-        reason_str = ". ".join(reasons[:3]) if reasons else "Based on role and keyword analysis."
+        # VP at banks = grade, not seniority
+        if "vice president" in role_l or " vp " in role_l:
+            bank_names = ["citi", "jpmorgan", "jp morgan", "hsbc", "goldman",
+                         "barclays", "standard chartered", "bnp", "ubs",
+                         "dbs", "ocbc", "uob", "morgan stanley", "deutsche"]
+            if any(b in company_l for b in bank_names):
+                role_note += " (VP = banking grade)"
+
+        # Director/C-suite penalty
+        if any(s in role_l for s in ["managing director", "chief ", "cto", "cio", "head of "]):
+            role_score = max(0, role_score - 1.0)
+            role_note += " | Too senior"
+
+        dimensions["role"] = {"score": role_score, "max": 2.0, "note": role_note}
+
+        # ══ DIM 2: Skills Match (0–3.0) ════════════════════════
+        jd_keywords = set()
+        for phrase in phrase_patterns:
+            if phrase in jd:
+                jd_keywords.add(phrase)
+
+        matched = all_profile_terms & jd_keywords
+        jd_only = jd_keywords - all_profile_terms
+        match_ratio = len(matched) / max(1, len(jd_keywords))
+
+        if match_ratio >= 0.6:
+            skills_score = 3.0
+        elif match_ratio >= 0.4:
+            skills_score = 2.0
+        elif match_ratio >= 0.2:
+            skills_score = 1.0
+        else:
+            skills_score = 0.3
+        skills_note = f"{len(matched)}/{len(jd_keywords)} keywords ({int(match_ratio*100)}%)"
+
+        matched_kw_list = sorted(list(matched))[:15]
+        jd_only_kw_list = sorted(list(jd_only))[:10]
+        dimensions["skills"] = {"score": skills_score, "max": 3.0, "note": skills_note}
+
+        # ══ DIM 3: Work Environment (0–2.0) ════════════════════
+        product_count = sum(1 for s in PRODUCT_SIGNALS if s in combined)
+        consulting_count = sum(1 for s in CONSULTING_SIGNALS if s in combined)
+        govt_count = sum(1 for s in GOVT_SIGNALS if s in combined)
+
+        if govt_count > 0:
+            env_score = 0.0
+            env_note = "Govt/public sector — prioritises Citizens/PRs"
+        elif consulting_count > product_count and consulting_count >= 2:
+            env_score = 0.0
+            env_note = "Traditional consulting"
+        elif consulting_count > 0 and product_count == 0:
+            env_score = 0.5
+            env_note = "Possible consulting"
+        elif product_count >= 3:
+            env_score = 2.0
+            env_note = "Strong product company"
+        elif product_count >= 1:
+            env_score = 1.5
+            env_note = "Product signals present"
+        else:
+            bank_signals = ["bank", "banking", "financial institution", "wealth management",
+                           "asset management", "insurance", "lending"]
+            if any(b in combined for b in bank_signals):
+                env_score = 1.5
+                env_note = "Financial institution (in-house)"
+            else:
+                env_score = 0.8
+                env_note = "Neutral environment"
+
+        wlb = ["work life balance", "work-life", "flexible", "hybrid", "remote",
+               "well-being", "wellness", "autonomy", "ownership culture", "async"]
+        if any(w in combined for w in wlb):
+            env_score = min(2.0, env_score + 0.3)
+            env_note += " + WLB signals"
+        dimensions["environment"] = {"score": env_score, "max": 2.0, "note": env_note}
+
+        # ══ DIM 4: Location (0–1.0) ════════════════════════════
+        sg = ["singapore", " sg ", "sgd", "raffles", "tanjong pagar", "one-north",
+              "mapletree", "mbfc", "orchard", "marina bay"]
+        au_nz = ["australia", "sydney", "melbourne", "new zealand", "auckland"]
+
+        if any(s in combined for s in sg):
+            loc_score, loc_note = 1.0, "Singapore"
+        elif any(s in combined for s in au_nz):
+            if any(v in combined for v in VISA_OK):
+                loc_score, loc_note = 0.8, "AU/NZ with sponsorship"
+            else:
+                loc_score, loc_note = 0.4, "AU/NZ — sponsorship unclear"
+        elif any(v in combined for v in VISA_OK):
+            loc_score, loc_note = 0.6, "Sponsorship available"
+        else:
+            loc_score, loc_note = 0.3, "Location unclear"
+        dimensions["location"] = {"score": loc_score, "max": 1.0, "note": loc_note}
+
+        # ══ DIM 5: Compensation (0–0.5) ════════════════════════
+        comp_score, comp_note = 0.25, "No salary info"
+        salary = j.get("salary", "") or ""
+        if salary:
+            nums = _re.findall(r'\d+', salary.replace(",", ""))
+            if nums:
+                try:
+                    highest = max(int(n) for n in nums if int(n) > 100)
+                    if highest >= 110000 or (9000 <= highest <= 20000):
+                        comp_score, comp_note = 0.5, "In range"
+                    elif highest >= 90000 or (7500 <= highest < 9000):
+                        comp_score, comp_note = 0.3, "Borderline"
+                    else:
+                        comp_score, comp_note = 0.1, "Below target"
+                except: pass
+        dimensions["compensation"] = {"score": comp_score, "max": 0.5, "note": comp_note}
+
+        # ══ DIM 6: Domain (0–1.5) ══════════════════════════════
+        excellent_domains = {
+            "lending": ["lending", "loan", "loan servicing", "loan lifecycle",
+                       "origination", "underwriting", "credit facility", "loan iq",
+                       "core banking", "wealth lending"],
+            "fintech": ["fintech", "digital banking", "neobank", "payment"],
+            "finance": ["banking", "financial services", "capital markets",
+                       "asset management", "investment banking", "wealth management"],
+        }
+        good_domains = {
+            "tech": ["technology", "saas", "platform", "software", "digital"],
+            "payments": ["payments", "remittance", "transfer", "checkout"],
+            "ecommerce": ["e-commerce", "ecommerce", "marketplace", "retail tech"],
+        }
+        not_fit_domains = ["healthcare", "pharmaceutical", "oil and gas", "mining",
+                          "construction", "real estate", "food and beverage", "hospitality"]
+
+        domain_score, domain_note = 0.5, "Neutral"
+        for cat, terms in excellent_domains.items():
+            if any(t in combined for t in terms):
+                domain_score, domain_note = 1.5, f"Excellent: {cat}"
+                break
+        if domain_score < 1.5:
+            for cat, terms in good_domains.items():
+                if any(t in combined for t in terms):
+                    domain_score, domain_note = 1.0, f"Good: {cat}"
+                    break
+        if any(nf in combined for nf in not_fit_domains):
+            domain_score, domain_note = 0.0, "Unrelated domain"
+        dimensions["domain"] = {"score": domain_score, "max": 1.5, "note": domain_note}
+
+        # ══ TOTAL ══════════════════════════════════════════════
+        total = sum(d["score"] for d in dimensions.values())
+        total = round(min(10.0, max(0.0, total)), 1)
+
+        if total >= 8:   label, priority = "🔥 Strong Match", "Apply Today"
+        elif total >= 6: label, priority = "✅ Good Fit", "Apply This Week"
+        elif total >= 4: label, priority = "🟡 Possible", "Lower Priority"
+        elif total >= 2: label, priority = "❌ Weak Fit", "Skip"
+        else:            label, priority = "🚫 Ineligible", "Skip"
+
+        dim_reasons = [f"{k}:{d['score']:.1f}/{d['max']:.1f}" for k, d in dimensions.items()]
+        reason = " | ".join(dim_reasons) + f" — {dimensions.get('role',{}).get('note','')}. {dimensions.get('domain',{}).get('note','')}"
 
         rankings.append({
-            "id":               j.get("id"),
-            "score":            score,
-            "label":            label,
-            "priority":         priority,
-            "reason":           reason_str,
-            "matched_keywords": matched_keywords,      # for resume generation
-            "jd_only_keywords": jd_only_keywords,      # keywords in JD not yet in profile
+            "id": j.get("id"), "score": total,
+            "label": label, "priority": priority,
+            "reason": reason,
+            "scoringVersion": SCORING_VERSION,
+            "matched_keywords": matched_kw_list,
+            "jd_only_keywords": jd_only_kw_list,
+            "dimensions": dimensions,
         })
 
-    print(f"[rank_jobs] Scored {len(rankings)} jobs (keyword match, no AI)")
-    return jsonify({"rankings": rankings})
+    scored_count = sum(1 for r in rankings if r.get("score") is not None and r.get("label") != "⚠️ No JD")
+    no_jd_count = sum(1 for r in rankings if r.get("label") == "⚠️ No JD")
+    skipped = len(jobs) - scored_count - no_jd_count
 
+    print(f"[rank_jobs_v3] Scored {scored_count}, skipped {skipped}, no JD {no_jd_count}")
+    return jsonify({
+        "rankings": rankings,
+        "scored_count": scored_count,
+        "skipped_count": skipped,
+        "no_jd_count": no_jd_count,
+        "scoring_version": SCORING_VERSION,
+    })
 
 @app.route("/api/fetch-jd", methods=["POST"])
 def fetch_jd():

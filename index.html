@@ -1009,9 +1009,9 @@ function copyBookmarklet() {
  </div>
  <!-- Filters -->
  <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
- <input type="text" id="filterRole" class="form-control" placeholder="Filter by role..." style="max-width:200px;height:32px;font-size:12px;" oninput="renderKanban()">
- <input type="text" id="filterCompany" class="form-control" placeholder="Filter by company..." style="max-width:200px;height:32px;font-size:12px;" oninput="renderKanban()">
- <select id="filterStatus" class="form-control" style="max-width:150px;height:32px;font-size:12px;" onchange="renderKanban()">
+ <input type="text" id="filterRole" class="form-control" placeholder="Filter by role..." style="max-width:180px;height:32px;font-size:12px;" oninput="renderKanban()">
+ <input type="text" id="filterCompany" class="form-control" placeholder="Filter by company..." style="max-width:180px;height:32px;font-size:12px;" oninput="renderKanban()">
+ <select id="filterStatus" class="form-control" style="max-width:130px;height:32px;font-size:12px;" onchange="renderKanban()">
  <option value="">All Stages</option>
  <option value="saved">Saved</option>
  <option value="applied">Applied</option>
@@ -1020,7 +1020,29 @@ function copyBookmarklet() {
  <option value="offer">Offer</option>
  <option value="rejected">Rejected</option>
  </select>
- <button class="btn btn-xs btn-ghost" onclick="document.getElementById('filterRole').value='';document.getElementById('filterCompany').value='';document.getElementById('filterStatus').value='';renderKanban();" style="font-size:11px;">Clear Filters</button>
+ <select id="filterScore" class="form-control" style="max-width:140px;height:32px;font-size:12px;" onchange="renderKanban()">
+ <option value="">All Scores</option>
+ <option value="8-10">🔥 8-10 Strong</option>
+ <option value="6-7.9">✅ 6-8 Good Fit</option>
+ <option value="4-5.9">🟡 4-6 Possible</option>
+ <option value="0-3.9">❌ 0-4 Weak</option>
+ <option value="unscored">⚠️ Unscored</option>
+ <option value="no-jd">📋 No JD</option>
+ </select>
+ <select id="filterDate" class="form-control" style="max-width:140px;height:32px;font-size:12px;" onchange="renderKanban()">
+ <option value="">All Dates</option>
+ <option value="today">Added Today</option>
+ <option value="3d">Last 3 Days</option>
+ <option value="7d">Last 7 Days</option>
+ <option value="30d">Last 30 Days</option>
+ <option value="older">Older than 30d</option>
+ </select>
+ <select id="filterJD" class="form-control" style="max-width:110px;height:32px;font-size:12px;" onchange="renderKanban()">
+ <option value="">JD: Any</option>
+ <option value="has">✅ Has JD</option>
+ <option value="no">❌ No JD</option>
+ </select>
+ <button class="btn btn-xs btn-ghost" onclick="clearAllFilters()" style="font-size:11px;">✕ Clear</button>
  <span id="filterCount" style="font-size:11px;color:var(--gray-400);"></span>
  </div>
  <div class="tracker-layout">
@@ -1776,6 +1798,7 @@ async function openRankModal() {
  job.aiLabel = r.label;
  job.aiReason = r.reason;
  job.aiPriority = r.priority;
+ job.scoringVersion = r.scoringVersion || '';
  if (r.matched_keywords && r.matched_keywords.length) job.matchedKeywords = r.matched_keywords;
  if (r.jd_only_keywords && r.jd_only_keywords.length) job.jdOnlyKeywords = r.jd_only_keywords;
  }
@@ -2543,6 +2566,12 @@ function initSampleJobs() {
  localStorage.setItem('jobs_initialized', 'true');
  // Don't insert demos user will import their own jobs
 }
+function clearAllFilters() {
+ ['filterRole','filterCompany'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+ ['filterStatus','filterScore','filterDate','filterJD'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+ renderKanban();
+}
+
 async function confirmClearAll() {
  const real = getJobs().filter(j => !j.isDemo);
  const msg = real.length > 0
@@ -2576,23 +2605,57 @@ function renderKanban() {
  const container = document.getElementById("jobListView");
  if (!container) return;
  container.innerHTML = "";
- // Apply filters
+ // Apply ALL filters
  const fRole = (document.getElementById('filterRole')?.value || '').toLowerCase().trim();
  const fCompany = (document.getElementById('filterCompany')?.value || '').toLowerCase().trim();
  const fStatus = document.getElementById('filterStatus')?.value || '';
+ const fScore = document.getElementById('filterScore')?.value || '';
+ const fDate = document.getElementById('filterDate')?.value || '';
+ const fJD = document.getElementById('filterJD')?.value || '';
+ const hasAnyFilter = fRole || fCompany || fStatus || fScore || fDate || fJD;
+
  const jobs = allJobs.filter(j => {
  const jRole = typeof j.role === 'object' ? (j.role?.text || '') : (j.role || '');
       const jRoleType = typeof j.roleType === 'object' ? (j.roleType?.text || '') : (j.roleType || '');
       if (fRole && !jRole.toLowerCase().includes(fRole) && !jRoleType.toLowerCase().includes(fRole)) return false;
  if (fCompany && !(j.company || '').toLowerCase().includes(fCompany)) return false;
  if (fStatus && j.status !== fStatus && !(j.status === 'wishlist' && fStatus === 'saved')) return false;
+
+ // Score filter
+ if (fScore) {
+   if (fScore === 'unscored') {
+     if (j.aiScore != null) return false;
+   } else if (fScore === 'no-jd') {
+     if (j.jd && j.jd.length > 50) return false;
+   } else {
+     const [min, max] = fScore.split('-').map(Number);
+     if (j.aiScore == null || j.aiScore < min || j.aiScore > max) return false;
+   }
+ }
+
+ // Date tracked filter
+ if (fDate) {
+   const tracked = new Date(j.dateAdded || j.dateApplied || j.created_at || 0);
+   const now = new Date();
+   const diffDays = (now - tracked) / (1000 * 60 * 60 * 24);
+   if (fDate === 'today' && diffDays > 1) return false;
+   if (fDate === '3d' && diffDays > 3) return false;
+   if (fDate === '7d' && diffDays > 7) return false;
+   if (fDate === '30d' && diffDays > 30) return false;
+   if (fDate === 'older' && diffDays <= 30) return false;
+ }
+
+ // JD filter
+ if (fJD === 'has' && (!j.jd || j.jd.length < 50)) return false;
+ if (fJD === 'no' && j.jd && j.jd.length >= 50) return false;
+
  return true;
  });
  // Update filter count
  const countEl = document.getElementById('filterCount');
  if (countEl) {
-  if (fRole || fCompany || fStatus) countEl.textContent = `Showing ${jobs.length} of ${allJobs.length}`;
-  else countEl.textContent = '';
+  if (hasAnyFilter) countEl.textContent = `Showing ${jobs.length} of ${allJobs.length}`;
+  else countEl.textContent = `${allJobs.length} jobs`;
  }
  // Group by status, sort each group by AI score descending
  const grouped = {};
@@ -2700,7 +2763,7 @@ function renderRow(j) {
  </div>
  <div>
  <div class="job-row-role">${typeof j.role === 'object' ? (j.role.text || '') : (j.role || '')}</div>
- <div style="font-size:10px;color:var(--gray-400);margin-top:2px;">${sgDate(j.dateApplied)}</div>
+ <div style="font-size:10px;color:var(--gray-400);margin-top:2px;">Tracked: ${sgDate(j.dateAdded || j.dateApplied)} ${j.datePosted ? '· Posted: '+j.datePosted : ''}</div>
  </div>
  <div style="text-align:center;">${jdStatus}</div>
  <div>${scoreText}</div>
@@ -2953,6 +3016,7 @@ function saveJob() {
  priority: document.getElementById("mPriority").value,
  notes: document.getElementById("mNotes").value.trim(),
  dateApplied: new Date().toISOString(),
+ dateAdded: new Date().toISOString(),
  checklist: {}
  });
  saveJobs(jobs);
@@ -3487,7 +3551,7 @@ async function autoScoreUnscoredJobs() {
     const allJobs = getJobs();
     data.rankings.forEach(r => {
      const job = allJobs.find(j => String(j.id) === String(r.id));
-     if (job) { job.aiScore = r.score; job.aiLabel = r.label; job.aiReason = r.reason; job.aiPriority = r.priority; }
+     if (job) { job.aiScore = r.score; job.aiLabel = r.label; job.aiReason = r.reason; job.aiPriority = r.priority; job.scoringVersion = r.scoringVersion || ''; }
     });
     saveJobs(allJobs);
     totalScored += data.rankings.length;
@@ -3833,6 +3897,7 @@ async function mergeBookmarkletJobs(incoming) {
  roleType: j.roleType || 'Business Analyst',
  status: (!j.status || j.status === 'wishlist') ? 'saved' : j.status,
  dateApplied: j.dateApplied || new Date().toISOString(),
+ dateAdded: new Date().toISOString(),
  source: j.source || 'LinkedIn',
  notes: j.notes || '',
  salary: j.salary || '',
